@@ -1,0 +1,5 @@
+{
+  "arbiter_id": "arbiter0",
+  "arbiter_secret_key_path": "../disk/arbiter0-eg-private.key",
+  "arbiter_public_key_path": "../disk/arbiter0-eg-public.key"
+}

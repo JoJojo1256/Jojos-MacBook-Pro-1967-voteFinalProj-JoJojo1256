@@ -1,0 +1,7 @@
+{
+  "voter_id": "voter2",
+  "voter_vote_path": "../disk/voter2-vote.txt",
+  "voter_vote_zkp_path": "../disk/voter2-vote-zkp.txt",
+  "voter_registrar_signature_path": "../disk/voter2-registrar_signature.txt",
+  "voter_blind_path": "../disk/voter2-blind.txt"
+}

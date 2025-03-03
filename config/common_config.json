@@ -1,0 +1,6 @@
+{
+  "db_path": "../disk/vote.db",
+  "arbiter_public_key_paths": ["../disk/arbiter0-eg-public.key", "../disk/arbiter1-eg-public.key"],
+  "registrar_verification_key_path": "../disk/registrar-rsa-public.key",
+  "tallyer_verification_key_path": "../disk/tallyer-rsa-public.key"
+}
