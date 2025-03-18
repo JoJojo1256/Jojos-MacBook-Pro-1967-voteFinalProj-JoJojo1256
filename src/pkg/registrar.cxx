@@ -153,5 +153,43 @@ void RegistrarClient::HandleRegister(
   // TODO: implement me!
   // --------------------------------
   // Exit cleanly
+  // Generate AES and HMAC keys
+  try {
+    auto keys = this->HandleKeyExchange(network_driver, crypto_driver);
+    CryptoPP::SecByteBlock AES_key = keys.first;
+    CryptoPP::SecByteBlock HMAC_key = keys.second;
+    std::vector<unsigned char> encrypted_data = network_driver->read();
+    std::pair<std::vector<unsigned char>, bool> decrypted_data =
+        crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
+    if (!decrypted_data.second) {
+      throw std::runtime_error("MAC verification failed.");
+    }
+    VoterToRegistrar_Register_Message user_data;
+    user_data.deserialize(decrypted_data.first);
+    VoterRow voter = this->db_driver->find_voter(user_data.id);
+    CryptoPP::Integer signature;
+    if (voter.id != ""){
+      signature = voter.registrar_signature;
+    }
+
+    else{
+      signature = crypto_driver->RSA_BLIND_sign(
+          this->RSA_registrar_signing_key, user_data.vote);
+      this->db_driver->insert_voter({user_data.id, signature});
+    }
+
+    RegistrarToVoter_Register_Message response;
+    response.id = user_data.id;
+    response.registrar_signature = signature;
+    std::vector<unsigned char> response_data = crypto_driver->encrypt_and_tag(
+        AES_key, HMAC_key, &response);
+    network_driver->send(response_data);
+    network_driver->disconnect();
+  }
+  catch (std::runtime_error &e) {
+    this->cli_driver->print_error(e.what());
+    network_driver->disconnect();
+    return;
+  }
   network_driver->disconnect();
 }

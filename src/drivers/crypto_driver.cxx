@@ -225,6 +225,12 @@ bool CryptoDriver::HMAC_verify(SecByteBlock key, std::string ciphertext,
  */
 std::pair<CryptoPP::Integer, CryptoPP::Integer> CryptoDriver::EG_generate() {
   // TODO: implement me!
+  CryptoPP::AutoSeededRandomPool prng;
+    // Generate a random number in [min, max]
+    // where is q from????
+  CryptoPP::Integer a = Integer(prng, 2, DL_Q - 1);
+  CryptoPP::Integer A = CryptoPP::ModularExponentiation(DL_G, a, DL_P);
+  return std::make_pair(a, A);
 }
 
 /**
@@ -233,6 +239,15 @@ std::pair<CryptoPP::Integer, CryptoPP::Integer> CryptoDriver::EG_generate() {
  */
 std::pair<RSA::PrivateKey, RSA::PublicKey> CryptoDriver::RSA_generate_keys() {
   // TODO: implement me!
+AutoSeededRandomPool rng;
+  RSA::PrivateKey private_key;
+  private_key.GenerateRandomWithKeySize(rng, RSA_KEYSIZE);
+  RSA::PublicKey public_key(private_key);
+  
+  if (!private_key.Validate(rng, 3) || !public_key.Validate(rng, 3)) {
+    throw std::runtime_error("CryptoDriver RSA key generation failed.");
+  }
+  return std::make_pair(private_key, public_key);
 }
 
 /**
@@ -241,6 +256,21 @@ std::pair<RSA::PrivateKey, RSA::PublicKey> CryptoDriver::RSA_generate_keys() {
 std::string CryptoDriver::RSA_sign(const RSA::PrivateKey &signing_key,
                                    std::vector<unsigned char> message) {
   // TODO: implement me!
+  CryptoPP::AutoSeededRandomPool prng;
+  RSA::Signer signer(signing_key);
+  std::string msg_str = chvec2str(message);
+
+  // Sign the message
+  std::string signature;
+  CryptoPP::AutoSeededRandomPool rng;
+
+  CryptoPP::StringSource(msg_str, true,
+    new CryptoPP::SignerFilter(rng, signer,
+      new CryptoPP::StringSink(signature)
+    ) 
+    ); 
+
+  return signature;
 }
 
 /**
@@ -252,6 +282,20 @@ bool CryptoDriver::RSA_verify(const RSA::PublicKey &verification_key,
   const int flags = SignatureVerificationFilter::PUT_RESULT |
                     SignatureVerificationFilter::SIGNATURE_AT_END;
   // TODO: implement me!
+  std::string message_str = chvec2str(message);
+  RSA::Verifier verifier(verification_key);
+  bool result = false;
+
+    // Verify signature using SignatureVerificationFilter
+    StringSource ss(message_str + signature, true,
+        new SignatureVerificationFilter(
+            verifier,
+            new ArraySink((byte*)&result, sizeof(result)),
+            flags
+        ) // SignatureVerificationFilter
+    ); // StringSource
+
+    return result;
 }
 
 /**
@@ -285,6 +329,14 @@ CryptoDriver::RSA_BLIND_blind(const RSA::PublicKey &public_key,
   // 3) Return the blinded message and the blinding factor r
   // See https://www.cryptopp.com/wiki/Blind_Signature for reference
   // TODO: implement me!
+  CryptoPP::Integer r;
+  do {
+    r.Randomize(prng, 1, n - 1);
+  } while (!RelativelyPrime(r, n));
+
+
+  CryptoPP::Integer mm = (hm * CryptoPP::ModularExponentiation(r, e, n)) % n;
+  return std::make_pair(mm, r);
 }
 
 /**
@@ -294,6 +346,10 @@ CryptoPP::Integer
 CryptoDriver::RSA_BLIND_sign(const RSA::PrivateKey &private_key,
                              CryptoPP::Integer blinded_msg) {
   // TODO: implement me!
+  CryptoPP::AutoSeededRandomPool prng;
+  CryptoPP::Integer r_inv = CryptoPP::EuclideanMultiplicativeInverse(r, n);
+  CryptoPP::Integer signature = CryptoPP::a_times_b_mod_c(blinded_sig, r_inv, n);
+  return signature;
 }
 
 /**
@@ -304,6 +360,20 @@ CryptoDriver::RSA_BLIND_unblind(const RSA::PublicKey &public_key,
                                 CryptoPP::Integer signed_blind_msg,
                                 CryptoPP::Integer blind) {
   // TODO: implement me!
+  const CryptoPP::Integer n = public_key.GetModulus();
+
+  // Compute the inverse of blind mod n
+  CryptoPP::Integer blind_inverse = CryptoPP::EuclideanMultiplicativeInverse(blind, n);
+
+  // Safety check: if inverse doesn't exist, throw error
+  if (blind_inverse == 0) {
+    throw std::runtime_error("Blind factor has no inverse mod n!");
+  }
+
+  // Unblind the signature: s = (s' * r^-1) mod n
+  CryptoPP::Integer unblinded_signature = CryptoPP::a_times_b_mod_c(signed_blind_msg, blind_inverse, n);
+
+  return unblinded_signature;
 }
 
 /**
@@ -335,6 +405,8 @@ bool CryptoDriver::RSA_BLIND_verify(const RSA::PublicKey &public_key,
   // CryptoPP wiki.
   // 2) Compare the result to the hash of the message (`hm`) and return
   // TODO: implement me!
+  CryptoPP::Integer signed_hash = CryptoPP::ModularExponentiation(signature, e, n);
+  return signed_hash == hm;
 }
 
 /**

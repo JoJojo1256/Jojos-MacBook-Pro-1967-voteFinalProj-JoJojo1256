@@ -104,4 +104,69 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
   LoadElectionPublicKey(common_config.arbiter_public_key_paths,
                         this->EG_arbiter_public_key);
   // TODO: implement me!
+  try{
+   std::vector<TallyerToWorld_Vote_Message> votes = this->db_driver->all_votes();
+
+  // Step 2: Verify votes and signatures
+  std::vector<std::pair<Vote_Ciphertext, VoteZKP_Struct>> valid_votes;
+
+  for (const auto& vote_row : votes) {
+    const Vote_Ciphertext& vote = vote_row.vote;
+    const VoteZKP_Struct& zkp = vote_row.zkp;
+    const CryptoPP::Integer& unblinded_signature = vote_row.unblinded_signature;
+
+    // Verify the vote ZKP
+    bool zkp_valid = this->election->VerifyVoteZKP(this->EG_arbiter_public_key, vote, zkp);
+
+    // Hash the serialized vote
+    std::vector<unsigned char> serialized_vote;
+    vote.serialize(serialized_vote);
+
+    // Verify the registrar's unblinded signature on the vote hash
+    bool sig_valid = this->crypto_driver->RSA_verify(
+        this->RSA_registrar_verification_key, serialized_vote, unblinded_signature);
+
+    if (zkp_valid && sig_valid) {
+      valid_votes.push_back({vote, zkp});
+    } else {
+      this->cli_driver->print_warning("Invalid vote detected; skipping.");
+    }
+  }
+
+  if (valid_votes.empty()) {
+    this->cli_driver->print_warning("No valid votes found after verification.");
+    return;
+  }
+  ElectionClient election;
+
+  // Step 4: Combine all valid votes
+  Vote_Ciphertext combined_vote = election.CombineVotes(valid_votes);
+
+  // Step 5: Partially decrypt the combined vote
+  auto partial_decryption_result = election.PartialDecrypt(
+      combined_vote,
+      this->EG_arbiter_public_key,
+      this->EG_arbiter_secret_key
+  );
+
+  PartialDecryption_Struct partial_dec = partial_decryption_result.first;
+
+  // Step 5: Generate ZKP for the partial decryption
+  DecryptionZKP_Struct decrypt_zkp = partial_decryption_result.second;
+
+  // Step 6: Publish the partial decryption
+  ArbiterToWorld_PartialDecryption_Message partial_decryption_msg;
+  partial_decryption_msg.arbiter_id = this->arbiter_config.arbiter_id;
+  partial_decryption_msg.decryption_share = partial_dec;
+  partial_decryption_msg.zkp = decrypt_zkp;
+  partial_decryption_msg.arbiter_vk_path = this->arbiter_config.arbiter_public_key_path;
+
+  this->db_driver->insert_partial_decryption(partial_decryption_msg);
+
+  this->cli_driver->print_info("Partial decryption and ZKP published successfully!");
+}
+  catch (std::exception &e) {
+    this->cli_driver->print_error(e.what());
+  }
+
 }

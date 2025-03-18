@@ -170,8 +170,40 @@ void VoterClient::HandleRegister(std::string input) {
 
   // TODO: implement me!
 
+  auto keys = this->HandleKeyExchange(this->RSA_registrar_verification_key);
+  CryptoPP::SecByteBlock AES_key = keys.first;
+  CryptoPP::SecByteBlock HMAC_key = keys.second;
   // Save the ElGamal encrypted vote, ZKP, registrar signature, and blind
   // to both memory and disk
+  ElectionClient election_client;
+  auto vote = election_client.GenerateVote(raw_vote, this->EG_arbiter_public_key);
+  Vote_Ciphertext vote_s = vote.first;
+  VoteZKP_Struct vote_zkp = vote.second;
+  
+  //prepare to blind the vote}
+  CryptoPP::AutoSeededRandomPool prng;
+  CryptoPP::Integer r;
+  r.Randomize(prng, 2, DL_Q - 1);
+  CryptoPP::Integer hashed = hash_vote_zkp(this->EG_arbiter_public_key, vote_s.a, vote_s.b, vote_zkp.a0, vote_zkp.b0, vote_zkp.a1, vote_zkp.b1);
+  auto blind_vote = this->crypto_driver->RSA_BLIND_blind(this->RSA_registrar_verification_key, hashed);
+  
+  CryptoPP::Integer blind = blind_vote.second;
+  VoterToRegistrar_Register_Message blinded_vote_msg;
+  blinded_vote_msg.id = voter_id;
+  blinded_vote_msg.vote = blind_vote.first;
+  
+  std::vector<unsigned char> data_to_send;
+  blinded_vote_msg.serialize(data_to_send);
+  //encyrpt and tag??
+  this->network_driver->send(data_to_send);
+
+  // 2. Receive registrar's blind signature on blinded vote
+  //decrypt and verify??
+  std::vector<unsigned char> response_data = this->network_driver->read();
+
+  RegistrarToVoter_Blind_Signature_Message r2v_sig_s;
+  r2v_sig_s.deserialize(response_data);
+
   // [STUDENTS] You may have named the RHS variables below differently.
   // Rename them to match your code.
   this->vote = vote_s;
@@ -210,6 +242,24 @@ void VoterClient::HandleVote(std::string input) {
   // TODO: implement me!
   // --------------------------------
   // Exit cleanly.
+  try {
+    auto keys = this->HandleKeyExchange(this->RSA_tallyer_verification_key);
+    CryptoPP::SecByteBlock AES_key = keys.first;
+    CryptoPP::SecByteBlock HMAC_key = keys.second;
+    TallyerToWorld_Vote_Message v2v_sig_s;
+    v2v_sig_s.vote = this->vote;
+    v2v_sig_s.zkp = this->vote_zkp;
+    v2v_sig_s.unblinded_signature = this->crypto_driver->RSA_BLIND_unblind(
+        this->RSA_registrar_verification_key, this->registrar_signature,
+        this->blind);
+    std::vector<unsigned char> v2v_sig_s_data;
+    v2v_sig_s.serialize(v2v_sig_s_data);
+    std::vector<unsigned char> encrypted_data =
+        this->crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &v2v_sig_s);
+    this->network_driver->send(encrypted_data);
+  } catch (std::exception &e) {
+    //this->cli_driver->print_error(e.what());
+  }
   this->network_driver->disconnect();
 }
 
@@ -245,4 +295,53 @@ void VoterClient::HandleVerify(std::string input) {
  */
 std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> VoterClient::DoVerify() {
   // TODO: implement me!
+  try {
+    // Load election public key
+
+    // Load all votes
+    std::vector<Vote_Ciphertext> votes;
+    std::vector<VoteZKP_Struct> vote_zkps;
+    std::vector<CryptoPP::Integer> unblinded_signatures;
+    std::vector<CryptoPP::Integer> blinds;
+    
+
+    // Verify all votes
+    CryptoPP::Integer vote_0 = 0;
+    CryptoPP::Integer vote_1 = 0;
+    for (int i = 0; i < this->common_config.num_voters; i++) {
+      // Verify vote ZKP
+      if (!this->crypto_driver->VerifyVoteZKP(arbiter_public_key, votes[i],
+                                              vote_zkps[i])) {
+        continue;
+      }
+
+      // Unblind the signature
+      CryptoPP::Integer unblinded_signature =
+          this->crypto_driver->RSA_BLIND_unblind(
+              this->RSA_registrar_verification_key, unblinded_signatures[i],
+              blinds[i]);
+
+      // Verify the signature
+      if (!this->crypto_driver->RSA_verify(this->RSA_registrar_verification_key,
+                                          votes[i].serialize(),
+                                          unblinded_signature)) {
+        continue;
+      }
+
+      // Add to vote count
+      if (votes[i].vote == 0) {
+        vote_0++;
+      } else if (votes[i].vote == 1) {
+        vote_1++;
+      }
+    }
+
+    // Verify
+    // TODO Finish this function
+    return std::make_tuple(vote_0, vote_1, true);
+
+  }
+  catch (std::exception &e) {
+    this->cli_driver->print_error(e.what());
+  }
 }

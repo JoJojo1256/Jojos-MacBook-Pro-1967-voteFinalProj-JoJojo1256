@@ -155,5 +155,41 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
   // TODO: implement me!
   // --------------------------------
   // Exit cleanly.
+  try {
+    auto keys = this->HandleKeyExchange(network_driver, crypto_driver);
+    CryptoPP::SecByteBlock AES_key = keys.first;
+    CryptoPP::SecByteBlock HMAC_key = keys.second;
+    std::vector<unsigned char> encrypted_data = network_driver->read();
+    std::pair<std::vector<unsigned char>, bool> decrypted_data =
+        crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
+    if (!decrypted_data.second) {
+      throw std::runtime_error("MAC verification failed.");
+    }
+    VoterToTallyer_Vote_Message vote;
+    vote.deserialize(decrypted_data.first);
+    // Check if the user has already voted
+    if (this->db_driver->vote_exists(vote.vote)) {
+      throw std::runtime_error("User has already voted.");
+    }
+    // Verify the signature
+    if (!crypto_driver->RSA_verify(this->RSA_registrar_verification_key, vote.vote.serialize(),
+                                   vote.unblinded_signature)) {
+      throw std::runtime_error("Registrar signature verification failed.");
+    }
+    // Sign the vote
+    TallyerToWorld_Vote_Message signed_vote;
+    signed_vote.vote = vote.vote;
+    signed_vote.zkp = vote.zkp;
+    signed_vote.unblinded_signature = crypto_driver->RSA_sign(
+        this->RSA_tallyer_signing_key, vote.vote.serialize());
+    // Publish the vote
+    this->db_driver->insert_vote(signed_vote);
+    // Mark the user as having voted
+    this->db_driver->insert_voter({vote.vote.id, vote.unblinded_signature});
+  }
+  catch (std::exception &e) {
+    this->cli_driver->print_error(e.what());
+  }
+  
   network_driver->disconnect();
 }
