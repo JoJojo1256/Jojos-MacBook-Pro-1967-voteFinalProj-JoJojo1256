@@ -155,7 +155,6 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
   // TODO: implement me!
   // --------------------------------
   // Exit cleanly.
-  try {
     auto keys = this->HandleKeyExchange(network_driver, crypto_driver);
     CryptoPP::SecByteBlock AES_key = keys.first;
     CryptoPP::SecByteBlock HMAC_key = keys.second;
@@ -172,24 +171,24 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
       throw std::runtime_error("User has already voted.");
     }
     // Verify the signature
-    if (!crypto_driver->RSA_verify(this->RSA_registrar_verification_key, vote.vote.serialize(),
-                                   vote.unblinded_signature)) {
+    std::vector<unsigned char> serialized_vote;
+    vote.vote.serialize(serialized_vote);
+    if (!crypto_driver->RSA_verify(this->RSA_registrar_verification_key, serialized_vote, integer_to_string(vote.unblinded_signature))) {
       throw std::runtime_error("Registrar signature verification failed.");
     }
     // Sign the vote
     TallyerToWorld_Vote_Message signed_vote;
     signed_vote.vote = vote.vote;
     signed_vote.zkp = vote.zkp;
-    signed_vote.unblinded_signature = crypto_driver->RSA_sign(
-        this->RSA_tallyer_signing_key, vote.vote.serialize());
+    signed_vote.unblinded_signature = string_to_integer(crypto_driver->RSA_sign(this->RSA_tallyer_signing_key, serialized_vote));
     // Publish the vote
     this->db_driver->insert_vote(signed_vote);
     // Mark the user as having voted
-    this->db_driver->insert_voter({vote.vote.id, vote.unblinded_signature});
-  }
-  catch (std::exception &e) {
-    this->cli_driver->print_error(e.what());
-  }
+    VoterRow voter;
+    //CHANGE from 5 to som else
+    voter.id = 5;
+    voter.registrar_signature = vote.unblinded_signature;
+    this->db_driver->insert_voter(voter);
   
   network_driver->disconnect();
 }

@@ -257,7 +257,7 @@ std::string CryptoDriver::RSA_sign(const RSA::PrivateKey &signing_key,
                                    std::vector<unsigned char> message) {
   // TODO: implement me!
   CryptoPP::AutoSeededRandomPool prng;
-  RSA::Signer signer(signing_key);
+  CryptoPP::RSASS<CryptoPP::PSS, CryptoPP::SHA256>::Signer signer(signing_key);
   std::string msg_str = chvec2str(message);
 
   // Sign the message
@@ -283,7 +283,7 @@ bool CryptoDriver::RSA_verify(const RSA::PublicKey &verification_key,
                     SignatureVerificationFilter::SIGNATURE_AT_END;
   // TODO: implement me!
   std::string message_str = chvec2str(message);
-  RSA::Verifier verifier(verification_key);
+  CryptoPP::RSASS<CryptoPP::PSS, CryptoPP::SHA256>::Verifier verifier(verification_key);
   bool result = false;
 
     // Verify signature using SignatureVerificationFilter
@@ -347,9 +347,9 @@ CryptoDriver::RSA_BLIND_sign(const RSA::PrivateKey &private_key,
                              CryptoPP::Integer blinded_msg) {
   // TODO: implement me!
   CryptoPP::AutoSeededRandomPool prng;
-  CryptoPP::Integer r_inv = CryptoPP::EuclideanMultiplicativeInverse(r, n);
-  CryptoPP::Integer signature = CryptoPP::a_times_b_mod_c(blinded_sig, r_inv, n);
-  return signature;
+  const CryptoPP::Integer n = private_key.GetModulus();
+  const CryptoPP::Integer d = private_key.GetPrivateExponent(); 
+  return CryptoPP::ModularExponentiation(blinded_msg, d, n);
 }
 
 /**
@@ -371,7 +371,7 @@ CryptoDriver::RSA_BLIND_unblind(const RSA::PublicKey &public_key,
   }
 
   // Unblind the signature: s = (s' * r^-1) mod n
-  CryptoPP::Integer unblinded_signature = CryptoPP::a_times_b_mod_c(signed_blind_msg, blind_inverse, n);
+  CryptoPP::Integer unblinded_signature = a_times_b_mod_c(signed_blind_msg, blind_inverse, n);
 
   return unblinded_signature;
 }
