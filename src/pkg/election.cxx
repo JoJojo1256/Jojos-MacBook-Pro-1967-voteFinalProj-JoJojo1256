@@ -23,15 +23,15 @@ ElectionClient::GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk) {
   r.Randomize(prng, 2, DL_Q - 1);
 
   ciphertext.a = CryptoPP::ModularExponentiation(DL_G, r, DL_P);
-  ciphertext.b = (CryptoPP::ModularExponentiation(pk, r, DL_P) * CryptoPP::ModularExponentiation(DL_G, vote, DL_P)) % DL_P;
+  ciphertext.b = a_times_b_mod_c(CryptoPP::ModularExponentiation(pk, r, DL_P), CryptoPP::ModularExponentiation(DL_G, vote, DL_P), DL_P);
 
   VoteZKP_Struct zkp;
 
-  if (vote == 1) {
+  if (vote == CryptoPP::Integer::One()) {
     CryptoPP::Integer double_r_prime_zero = CryptoPP::Integer(prng, 2, DL_Q - 1);
     CryptoPP::Integer sigma_zero = CryptoPP::Integer(prng, 2, DL_Q - 1);
-    CryptoPP::Integer a0 = CryptoPP::ModularExponentiation(DL_G, double_r_prime_zero, DL_P) * CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.a, sigma_zero, DL_P)), DL_P);
-    CryptoPP::Integer b0 = CryptoPP::ModularExponentiation(pk, double_r_prime_zero, DL_P) * CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.b, sigma_zero, DL_P)), DL_P);
+    CryptoPP::Integer a0 = a_times_b_mod_c(CryptoPP::ModularExponentiation(DL_G, double_r_prime_zero, DL_P), CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.a, sigma_zero, DL_P)), DL_P), DL_P);
+    CryptoPP::Integer b0 = a_times_b_mod_c(CryptoPP::ModularExponentiation(pk, double_r_prime_zero, DL_P), CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.b, sigma_zero, DL_P)), DL_P), DL_P);
     zkp.a0 = a0;
     zkp.b0 = b0;
     zkp.c0 = sigma_zero;
@@ -39,16 +39,16 @@ ElectionClient::GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk) {
     CryptoPP::Integer r_prime_one = CryptoPP::Integer(prng, 2, DL_Q - 1);
     zkp.a1 = CryptoPP::ModularExponentiation(DL_G, r_prime_one, DL_P);
     zkp.b1 = CryptoPP::ModularExponentiation(pk, r_prime_one, DL_P);
-    CryptoPP::Integer big_sigma = hash_vote_zkp(pk, ciphertext.a, ciphertext.b, a0, b0, zkp.a1, zkp.b1);
+    CryptoPP::Integer big_sigma = hash_vote_zkp(pk, ciphertext.a, ciphertext.b, zkp.a0, zkp.b0, zkp.a1, zkp.b1) % DL_Q;
     zkp.c1 = (big_sigma - sigma_zero) % DL_Q;
-    zkp.r1 = (r_prime_one + (big_sigma - sigma_zero) * r )% DL_Q;
+    zkp.r1 = (r_prime_one + a_times_b_mod_c(zkp.c1, r, DL_Q))% DL_Q;
   }
   else {
     // vote == 0
     CryptoPP::Integer double_r_prime_one = CryptoPP::Integer(prng, 2, DL_Q - 1);
     CryptoPP::Integer sigma_one = CryptoPP::Integer(prng, 2, DL_Q - 1);
-    CryptoPP::Integer a1 = CryptoPP::ModularExponentiation(DL_G, double_r_prime_one, DL_P) * CryptoPP::EuclideanMultiplicativeInverse ((CryptoPP::ModularExponentiation(ciphertext.a, sigma_one, DL_P)), DL_P);
-    CryptoPP::Integer b1 = CryptoPP::ModularExponentiation(pk, double_r_prime_one, DL_P) * CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.b / DL_G, sigma_one, DL_P)), DL_P);
+    CryptoPP::Integer a1 = a_times_b_mod_c(CryptoPP::ModularExponentiation(DL_G, double_r_prime_one, DL_P), CryptoPP::EuclideanMultiplicativeInverse ((CryptoPP::ModularExponentiation(ciphertext.a, sigma_one, DL_P)), DL_P), DL_P);
+    CryptoPP::Integer b1 = a_times_b_mod_c(CryptoPP::ModularExponentiation(pk, double_r_prime_one, DL_P), CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.b / DL_G, sigma_one, DL_P)), DL_P), DL_P);
     zkp.a1 = a1;
     zkp.b1 = b1;
     zkp.c1 = sigma_one;
@@ -56,9 +56,9 @@ ElectionClient::GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk) {
     CryptoPP::Integer r_prime_zero = CryptoPP::Integer(prng, 2, DL_Q - 1);
     zkp.a0 = CryptoPP::ModularExponentiation(DL_G, r_prime_zero, DL_P);
     zkp.b0 = CryptoPP::ModularExponentiation(pk, r_prime_zero, DL_P);
-    CryptoPP::Integer big_sigma = hash_vote_zkp(pk, ciphertext.a, ciphertext.b, zkp.a0, zkp.b0, a1, b1);
+    CryptoPP::Integer big_sigma = hash_vote_zkp(pk, ciphertext.a, ciphertext.b, zkp.a0, zkp.b0, a1, b1) % DL_Q;
     zkp.c0 = (big_sigma - sigma_one) % DL_Q;
-    zkp.r0 = (r_prime_zero + (big_sigma - sigma_one) * r )% DL_Q;
+    zkp.r0 = (r_prime_zero + a_times_b_mod_c(zkp.c0, r, DL_Q) )% DL_Q;
   }
   return std::make_pair(ciphertext, zkp);
 }
@@ -79,8 +79,8 @@ bool ElectionClient::VerifyVoteZKP(
   CryptoPP::Integer c1 = vote.second.c1;
   CryptoPP::Integer r1 = vote.second.r1;
 
-  CryptoPP::Integer big_sigma = hash_vote_zkp(pk, vote.first.a, vote.first.b, a0, b0, a1, b1);
-  if (c1 + c0 != big_sigma) {
+  CryptoPP::Integer big_sigma = hash_vote_zkp(pk, vote.first.a, vote.first.b, a0, b0, a1, b1) % DL_Q;
+  if (((c1 + c0) % DL_Q) != big_sigma) {
     CUSTOM_LOG(lg, debug) << "big_sigma does not match c1 + c0";
     return false;
   }
@@ -116,15 +116,13 @@ ElectionClient::PartialDecrypt(Vote_Ciphertext combined_vote,
   DecryptionZKP_Struct zkp;
   CryptoPP::AutoSeededRandomPool prng;
   CryptoPP::Integer r = CryptoPP::Integer(prng, 2, DL_Q - 1);
-  partial_decryption.aggregate_ciphertext.a = CryptoPP::ModularExponentiation(DL_G, r, DL_P);
-  partial_decryption.d = CryptoPP::ModularExponentiation(DL_G, r * sk, DL_P);
+  partial_decryption.aggregate_ciphertext = combined_vote;
+  partial_decryption.d = CryptoPP::ModularExponentiation(combined_vote.a, sk, DL_P);
   //not sure if sigma here should have comined_vote.something instead of combined_vote
   zkp.u = CryptoPP::ModularExponentiation(combined_vote.a, r, DL_P);
   zkp.v = CryptoPP::ModularExponentiation(DL_G, r, DL_P);
-  CryptoPP::Integer sigma = hash_dec_zkp(pk, partial_decryption.aggregate_ciphertext.a, partial_decryption.aggregate_ciphertext.b, zkp.u, zkp.v);
-  zkp.s = (r + sk * sigma) % DL_Q;
-  CryptoPP::Integer c1 = CryptoPP::ModularExponentiation(partial_decryption.aggregate_ciphertext.a, zkp.s, DL_P);
-  partial_decryption.aggregate_ciphertext.b = CryptoPP::ModularExponentiation(c1, r, DL_P);
+  CryptoPP::Integer sigma = hash_dec_zkp(pk, combined_vote.a, combined_vote.b, zkp.u, zkp.v);
+  zkp.s = (r + a_times_b_mod_c(sigma, sk, DL_Q)) % DL_Q;
   return std::make_pair(partial_decryption, zkp);
 }
 
@@ -162,9 +160,10 @@ Vote_Ciphertext ElectionClient::CombineVotes(std::vector<VoteRow> all_votes) {
   // TODO: implement me!
   CryptoPP::Integer a = 1;
   CryptoPP::Integer b = 1;
-  for (int i = 0; i < all_votes.size(); i++) {
-    a = a * all_votes[i].vote.a;
-    b = b * all_votes[i].vote.b;
+  for (const VoteRow& vote : all_votes) {
+    Vote_Ciphertext vote_ciphertext = vote.vote;
+    a = (a * vote_ciphertext.a) % DL_P;
+    b = (b * vote_ciphertext.b) % DL_P;
   }
   Vote_Ciphertext combined_vote;
   combined_vote.a = a;
@@ -180,9 +179,22 @@ CryptoPP::Integer ElectionClient::CombineResults(
     std::vector<PartialDecryptionRow> all_partial_decryptions) {
   initLogger();
   // TODO: implement me!
-  CryptoPP::Integer d = 1;
-  for (int i = 0; i < all_partial_decryptions.size(); i++) {
-    d = d * all_partial_decryptions[i].dec.d;
+  CryptoPP::Integer b = combined_vote.b;
+  CryptoPP::Integer d_product = 1;
+  for (const auto& partial_decryption : all_partial_decryptions) {
+    CryptoPP::Integer d = partial_decryption.dec.d;
+    d_product = (d_product * d) % DL_P;
   }
-  return d;
+  CryptoPP::Integer d_product_inverse = CryptoPP::EuclideanMultiplicativeInverse(d_product, DL_P);
+  CryptoPP::Integer result = (b * d_product_inverse) % DL_P;
+  CryptoPP::Integer count = 0;
+  CryptoPP::Integer test = 1;
+  while (test < DL_P) {
+    if (test == result) {
+      return count;
+    }
+    test = (test * DL_G) % DL_P;
+    count++;
+  }
+  return count;
 }

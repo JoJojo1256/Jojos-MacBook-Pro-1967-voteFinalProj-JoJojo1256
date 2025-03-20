@@ -155,40 +155,48 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
   // TODO: implement me!
   // --------------------------------
   // Exit cleanly.
-    auto keys = this->HandleKeyExchange(network_driver, crypto_driver);
+    auto keys = HandleKeyExchange(network_driver, crypto_driver);
     CryptoPP::SecByteBlock AES_key = keys.first;
     CryptoPP::SecByteBlock HMAC_key = keys.second;
     std::vector<unsigned char> encrypted_data = network_driver->read();
     std::pair<std::vector<unsigned char>, bool> decrypted_data =
         crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
     if (!decrypted_data.second) {
-      throw std::runtime_error("MAC verification failed.");
+      // this->cli_driver->print_error("MAC verification failed.");
+      network_driver->disconnect();
+      return;
     }
     VoterToTallyer_Vote_Message vote;
     vote.deserialize(decrypted_data.first);
     // Check if the user has already voted
     if (this->db_driver->vote_exists(vote.vote)) {
-      throw std::runtime_error("User has already voted.");
+      //this->cli_driver->print_error("User has already voted.");
+      network_driver->disconnect();
+      return;
     }
     // Verify the signature
-    std::vector<unsigned char> serialized_vote;
-    vote.vote.serialize(serialized_vote);
-    if (!crypto_driver->RSA_verify(this->RSA_registrar_verification_key, serialized_vote, integer_to_string(vote.unblinded_signature))) {
-      throw std::runtime_error("Registrar signature verification failed.");
+
+    bool sign_val = crypto_driver->RSA_BLIND_verify(this->RSA_registrar_verification_key, vote.vote, vote.unblinded_signature);
+    if (!sign_val) {
+      // this->cli_driver->print_error("Registrar signature verification failed.");
+      network_driver->disconnect();
+      return;
     }
     // Sign the vote
+    bool zkp_val = ElectionClient::VerifyVoteZKP(std::make_pair(vote.vote, vote.zkp), this->EG_arbiter_public_key);
+    if (!zkp_val) {
+      // this->cli_driver->print_error("Vote ZKP verification failed.");
+      network_driver->disconnect();
+      return;
+    }
+    std::vector<unsigned char> serialized_vote = concat_vote_zkp_and_signature(vote.vote, vote.zkp, vote.unblinded_signature);
     TallyerToWorld_Vote_Message signed_vote;
     signed_vote.vote = vote.vote;
     signed_vote.zkp = vote.zkp;
-    signed_vote.unblinded_signature = string_to_integer(crypto_driver->RSA_sign(this->RSA_tallyer_signing_key, serialized_vote));
-    // Publish the vote
+    signed_vote.unblinded_signature = vote.unblinded_signature;
+    signed_vote.tallyer_signature = crypto_driver->RSA_sign(this->RSA_tallyer_signing_key, serialized_vote);
     this->db_driver->insert_vote(signed_vote);
     // Mark the user as having voted
-    VoterRow voter;
-    //CHANGE from 5 to som else
-    voter.id = 5;
-    voter.registrar_signature = vote.unblinded_signature;
-    this->db_driver->insert_voter(voter);
   
   network_driver->disconnect();
 }

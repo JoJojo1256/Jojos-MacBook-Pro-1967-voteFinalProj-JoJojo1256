@@ -154,7 +154,7 @@ void RegistrarClient::HandleRegister(
   // --------------------------------
   // Exit cleanly
   // Generate AES and HMAC keys
-    auto keys = this->HandleKeyExchange(network_driver, crypto_driver);
+    auto keys = HandleKeyExchange(network_driver, crypto_driver);
     CryptoPP::SecByteBlock AES_key = keys.first;
     CryptoPP::SecByteBlock HMAC_key = keys.second;
     std::vector<unsigned char> encrypted_data = network_driver->read();

@@ -228,8 +228,9 @@ std::pair<CryptoPP::Integer, CryptoPP::Integer> CryptoDriver::EG_generate() {
   CryptoPP::AutoSeededRandomPool prng;
     // Generate a random number in [min, max]
     // where is q from????
-  CryptoPP::Integer a = Integer(prng, 2, DL_Q - 1);
-  CryptoPP::Integer A = CryptoPP::ModularExponentiation(DL_G, a, DL_P);
+  CryptoPP::Integer a;
+  a.Randomize(prng, 2, DL_Q - 1);
+  CryptoPP::Integer A = ModularExponentiation(DL_G, a, DL_P);
   return std::make_pair(a, A);
 }
 
@@ -335,7 +336,7 @@ CryptoDriver::RSA_BLIND_blind(const RSA::PublicKey &public_key,
   } while (!RelativelyPrime(r, n));
 
 
-  CryptoPP::Integer mm = (hm * CryptoPP::ModularExponentiation(r, e, n)) % n;
+  CryptoPP::Integer mm = (hm * ModularExponentiation(r, e, n)) % n;
   return std::make_pair(mm, r);
 }
 
@@ -405,7 +406,7 @@ bool CryptoDriver::RSA_BLIND_verify(const RSA::PublicKey &public_key,
   // CryptoPP wiki.
   // 2) Compare the result to the hash of the message (`hm`) and return
   // TODO: implement me!
-  CryptoPP::Integer signed_hash = CryptoPP::ModularExponentiation(signature, e, n);
+  CryptoPP::Integer signed_hash = ModularExponentiation(signature, e, n);
   return signed_hash == hm;
 }
 
