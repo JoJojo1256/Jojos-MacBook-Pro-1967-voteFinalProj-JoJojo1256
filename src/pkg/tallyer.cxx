@@ -159,8 +159,7 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
     CryptoPP::SecByteBlock AES_key = keys.first;
     CryptoPP::SecByteBlock HMAC_key = keys.second;
     std::vector<unsigned char> encrypted_data = network_driver->read();
-    std::pair<std::vector<unsigned char>, bool> decrypted_data =
-        crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
+    auto decrypted_data = crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
     if (!decrypted_data.second) {
       // this->cli_driver->print_error("MAC verification failed.");
       network_driver->disconnect();
@@ -197,6 +196,5 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
     signed_vote.tallyer_signature = crypto_driver->RSA_sign(this->RSA_tallyer_signing_key, serialized_vote);
     this->db_driver->insert_vote(signed_vote);
     // Mark the user as having voted
-  
-  network_driver->disconnect();
+    network_driver->disconnect();
 }
