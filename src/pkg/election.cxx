@@ -154,13 +154,12 @@ bool ElectionClient::VerifyPartialDecryptZKP(
   CryptoPP::Integer a = a2w_dec_s.dec.aggregate_ciphertext.a;
   CryptoPP::Integer b = a2w_dec_s.dec.aggregate_ciphertext.b;
   CryptoPP::Integer sigma = hash_dec_zkp(pki, a, b, u, v);
-  CryptoPP::Integer c1 = CryptoPP::ModularExponentiation(a, s, DL_P);
   CryptoPP::Integer d = a2w_dec_s.dec.d;
-  if (CryptoPP::ModularExponentiation(DL_G, s, DL_P) != a * CryptoPP::ModularExponentiation(pki, sigma, DL_P)) {
+  if (CryptoPP::ModularExponentiation(a, s, DL_P) != a_times_b_mod_c(u, CryptoPP::ModularExponentiation(d, sigma, DL_P), DL_P)) {
     CUSTOM_LOG(lg, debug) << "g^s does not match a * pk^sigma";
     return false;
   }
-  if (CryptoPP::ModularExponentiation(c1, s, DL_P) != b * CryptoPP::ModularExponentiation(d, sigma, DL_P)) {
+  if (CryptoPP::ModularExponentiation(DL_G, s, DL_P) != a_times_b_mod_c(v, CryptoPP::ModularExponentiation(pki, sigma, DL_P), DL_P)) {
     CUSTOM_LOG(lg, debug) << "c1^s does not match b * d^sigma";
     return false;
   }
