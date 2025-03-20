@@ -122,8 +122,7 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
 
     // Verify the registrar's unblinded signature on the vote hash
     bool sig_valid = this->crypto_driver->RSA_verify(
-        this->RSA_registrar_verification_key, serialized_vote, vote_row.registrar_signature);
-
+        this->RSA_registrar_verification_key, serialized_vote, vote_row.tallyer_signature);
     if (zkp_valid && sig_valid) {
       valid_votes.push_back(vote_row);
     } 
