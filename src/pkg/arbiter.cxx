@@ -114,16 +114,17 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
     // Verify the vote ZKP
     bool zkp_valid = ElectionClient::VerifyVoteZKP(std::make_pair(vote_row.vote, vote_row.zkp), this->EG_arbiter_public_key);
 
-    // Hash the serialized vote
-    std::vector<unsigned char> serialized_vote;
-    Vote_Ciphertext vote_copy = vote_row.vote;
-    vote_copy.serialize(serialized_vote);
-
     // Verify the registrar's unblinded signature on the vote hash
     //maybe add rsablind
+    Vote_Ciphertext vote = vote_row.vote;
+    VoteZKP_Struct zkp = vote_row.zkp;
+    CryptoPP::Integer unblinded_signature = vote_row.unblinded_signature;
+
     bool sig_valid = this->crypto_driver->RSA_verify(
-        this->RSA_tallyer_verification_key, serialized_vote, vote_row.tallyer_signature);
-    if (zkp_valid && sig_valid) {
+        this->RSA_tallyer_verification_key,concat_vote_zkp_and_signature(vote, zkp, unblinded_signature), vote_row.tallyer_signature);
+    bool registrar_signature_valid = this->crypto_driver->RSA_BLIND_verify(
+        this->RSA_registrar_verification_key, vote, unblinded_signature);
+    if (zkp_valid && sig_valid && registrar_signature_valid) {
       valid_votes.push_back(vote_row);
     } 
   }
