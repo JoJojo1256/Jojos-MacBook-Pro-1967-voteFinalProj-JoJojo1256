@@ -158,16 +158,18 @@ void RegistrarClient::HandleRegister(
     CryptoPP::SecByteBlock AES_key = keys.first;
     CryptoPP::SecByteBlock HMAC_key = keys.second;
     std::vector<unsigned char> encrypted_data = network_driver->read();
-    std::pair<std::vector<unsigned char>, bool> decrypted_data =
+    auto decrypted_data =
         crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
     if (!decrypted_data.second) {
-      throw std::runtime_error("MAC verification failed.");
+      //this->cli_driver->print_error("MAC verification failed.");
+      return;
     }
     VoterToRegistrar_Register_Message user_data;
     user_data.deserialize(decrypted_data.first);
+
     VoterRow voter = this->db_driver->find_voter(user_data.id);
     CryptoPP::Integer signature;
-    if (voter.id != ""){
+    if (!voter.id.empty()) {
       signature = voter.registrar_signature;
     }
 
