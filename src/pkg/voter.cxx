@@ -170,7 +170,7 @@ void VoterClient::HandleRegister(std::string input) {
 
   // TODO: implement me!
 
-  auto keys = this->HandleKeyExchange(this->RSA_registrar_verification_key);
+  auto keys = HandleKeyExchange(this->RSA_registrar_verification_key);
   CryptoPP::SecByteBlock AES_key = keys.first;
   CryptoPP::SecByteBlock HMAC_key = keys.second;
   // Save the ElGamal encrypted vote, ZKP, registrar signature, and blind
