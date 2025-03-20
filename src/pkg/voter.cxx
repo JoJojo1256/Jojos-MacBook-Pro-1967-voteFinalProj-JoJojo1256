@@ -307,11 +307,6 @@ std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> VoterClient::DoVerify() {
 
     // Load all votes
     CUSTOM_LOG(lg, debug) << "Verifying election results...";
-    std::vector<Vote_Ciphertext> votes;
-    std::vector<VoteZKP_Struct> vote_zkps;
-    std::vector<CryptoPP::Integer> unblinded_signatures;
-    std::vector<CryptoPP::Integer> blinds;
-    
 
     // Verify all votes
     CryptoPP::Integer vote_0 = 0;
@@ -320,7 +315,6 @@ std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> VoterClient::DoVerify() {
     std::vector<VoteRow> all_votes = this->db_driver->all_votes();
     std::vector<PartialDecryptionRow> all_partial_decryptions = this->db_driver->all_partial_decryptions();
 
-    ElectionClient election_client;
 
     std::vector<VoteRow> valid_votes;
     for (const auto& vote_row : all_votes) {
@@ -334,7 +328,7 @@ std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> VoterClient::DoVerify() {
 
       bool sig_valid = this->crypto_driver->RSA_verify(
           this->RSA_tallyer_verification_key, msg, vote_row.tallyer_signature);
-      bool zkp_valid = election_client.VerifyVoteZKP(std::make_pair(vote, vote_row.zkp), this->EG_arbiter_public_key);
+      bool zkp_valid = ElectionClient::VerifyVoteZKP(std::make_pair(vote, vote_row.zkp), this->EG_arbiter_public_key);
 
       if (registrar_signature_valid && sig_valid && zkp_valid) {
         valid_votes.push_back(vote_row);
@@ -345,7 +339,7 @@ std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> VoterClient::DoVerify() {
     for (const auto& partial_decryption_row : all_partial_decryptions) {
       CryptoPP::Integer pki;
       LoadInteger(partial_decryption_row.arbiter_vk_path, pki);
-      bool partial_decryption_valid = election_client.VerifyPartialDecryptZKP(partial_decryption_row, pki);
+      bool partial_decryption_valid = ElectionClient::VerifyPartialDecryptZKP(partial_decryption_row, pki);
       if (partial_decryption_valid) {
         valid_partial_decryptions.push_back(partial_decryption_row);
       }
@@ -353,7 +347,7 @@ std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> VoterClient::DoVerify() {
     CUSTOM_LOG(lg, debug) << "Verified partial decryptions";
     Vote_Ciphertext combined_vote = election_client.CombineVotes(valid_votes);
     CryptoPP::Integer total_votes = valid_votes.size();
-    CryptoPP::Integer res = election_client.CombineResults(combined_vote, all_partial_decryptions);
+    CryptoPP::Integer res = election_client.CombineResults(combined_vote, valid_partial_decryptions);
     vote_1 = res;
     vote_0 = total_votes - res;
     return std::make_tuple(vote_0, vote_1, success);
