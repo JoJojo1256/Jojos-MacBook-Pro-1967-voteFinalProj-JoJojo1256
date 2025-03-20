@@ -122,7 +122,7 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
 
     // Verify the registrar's unblinded signature on the vote hash
     bool sig_valid = this->crypto_driver->RSA_verify(
-        this->RSA_registrar_verification_key, serialized_vote, vote_row.tallyer_signature);
+        this->RSA_registrar_verification_key, serialized_vote, vote_row.registrar_signature);
 
     if (zkp_valid && sig_valid) {
       valid_votes.push_back(vote_row);
@@ -147,6 +147,8 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
   PartialDecryptionRow partial_decryption;
   partial_decryption.dec = partial_decryption_result.first;
   partial_decryption.zkp = partial_decryption_result.second;
+  partial_decryption.arbiter_id = this->arbiter_config.arbiter_id;
+  partial_decryption.arbiter_vk_path = this->arbiter_config.arbiter_public_key_path;
 
   // Step 5: Generate ZKP for the partial decryption
 
