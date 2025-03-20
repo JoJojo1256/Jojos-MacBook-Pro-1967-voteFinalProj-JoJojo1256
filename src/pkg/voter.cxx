@@ -179,8 +179,7 @@ void VoterClient::HandleRegister(std::string input) {
   
  
 
-  ElectionClient election_client;
-  auto vote = election_client.GenerateVote(raw_vote, this->EG_arbiter_public_key);
+  auto vote = ElectionClient::GenerateVote(raw_vote, this->EG_arbiter_public_key);
   Vote_Ciphertext vote_s = vote.first;
   VoteZKP_Struct vote_zkp = vote.second;
   CUSTOM_LOG(lg, debug) << "Generated vote and zkp";

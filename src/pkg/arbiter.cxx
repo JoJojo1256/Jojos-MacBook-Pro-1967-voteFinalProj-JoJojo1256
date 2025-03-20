@@ -108,12 +108,11 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
 
   // Step 2: Verify votes and signatures
   std::vector<VoteRow> valid_votes;
-  ElectionClient election;
 
   for (const auto& vote_row : votes) {
 
     // Verify the vote ZKP
-    bool zkp_valid = election.VerifyVoteZKP(std::make_pair(vote_row.vote, vote_row.zkp), this->EG_arbiter_public_key);
+    bool zkp_valid = ElectionClient::VerifyVoteZKP(std::make_pair(vote_row.vote, vote_row.zkp), this->EG_arbiter_public_key);
 
     // Hash the serialized vote
     std::vector<unsigned char> serialized_vote;
@@ -121,8 +120,9 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
     vote_copy.serialize(serialized_vote);
 
     // Verify the registrar's unblinded signature on the vote hash
+    //maybe add rsablind
     bool sig_valid = this->crypto_driver->RSA_verify(
-        this->RSA_registrar_verification_key, serialized_vote, vote_row.tallyer_signature);
+        this->RSA_tallyer_verification_key, serialized_vote, vote_row.tallyer_signature);
     if (zkp_valid && sig_valid) {
       valid_votes.push_back(vote_row);
     } 
@@ -134,10 +134,10 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
   }
 
   // Step 4: Combine all valid votes
-  Vote_Ciphertext combined_vote = election.CombineVotes(valid_votes);
+  Vote_Ciphertext combined_vote = ElectionClient::CombineVotes(valid_votes);
 
   // Step 5: Partially decrypt the combined vote
-  auto partial_decryption_result = election.PartialDecrypt(
+  auto partial_decryption_result = ElectionClient::PartialDecrypt(
       combined_vote,
       this->EG_arbiter_public_key,
       this->EG_arbiter_secret_key
@@ -148,10 +148,6 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
   partial_decryption.zkp = partial_decryption_result.second;
   partial_decryption.arbiter_id = this->arbiter_config.arbiter_id;
   partial_decryption.arbiter_vk_path = this->arbiter_config.arbiter_public_key_path;
-
-  // Step 5: Generate ZKP for the partial decryption
-
-  // Step 6: Publish the partial decryption
 
   this->db_driver->insert_partial_decryption(partial_decryption);
 
