@@ -336,7 +336,7 @@ CryptoDriver::RSA_BLIND_blind(const RSA::PublicKey &public_key,
   } while (!RelativelyPrime(r, n));
 
 
-  CryptoPP::Integer mm = (hm * ModularExponentiation(r, e, n)) % n;
+  CryptoPP::Integer mm = (hm * CryptoPP::ModularExponentiation(r, e, n)) % n;
   return std::make_pair(mm, r);
 }
 
