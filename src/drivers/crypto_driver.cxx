@@ -333,7 +333,7 @@ CryptoDriver::RSA_BLIND_blind(const RSA::PublicKey &public_key,
   CryptoPP::Integer r;
   do {
     r.Randomize(prng, 1, n - 1);
-  } while (!RelativelyPrime(r, n));
+  } while (!CryptoPP::RelativelyPrime(r, n));
 
 
   CryptoPP::Integer mm = (hm * CryptoPP::ModularExponentiation(r, e, n)) % n;
