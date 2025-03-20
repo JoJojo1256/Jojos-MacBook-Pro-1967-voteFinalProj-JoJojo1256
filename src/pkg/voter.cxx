@@ -177,12 +177,10 @@ void VoterClient::HandleRegister(std::string input) {
   // Save the ElGamal encrypted vote, ZKP, registrar signature, and blind
   // to both memory and disk
   
-  auto eg = this->crypto_driver->EG_generate();
-  auto eg_public_key = eg.second;
-  CUSTOM_LOG(lg, debug) << "Generated EG keys";
+ 
 
   ElectionClient election_client;
-  auto vote = election_client.GenerateVote(raw_vote, eg_public_key);
+  auto vote = election_client.GenerateVote(raw_vote, this->EG_arbiter_public_key);
   Vote_Ciphertext vote_s = vote.first;
   VoteZKP_Struct vote_zkp = vote.second;
   CUSTOM_LOG(lg, debug) << "Generated vote and zkp";
@@ -205,12 +203,12 @@ void VoterClient::HandleRegister(std::string input) {
   //decrypt and verify??
   std::vector<unsigned char> response_data = this->network_driver->read();
   auto decrypted_data = this->crypto_driver->decrypt_and_verify(AES_key, HMAC_key, response_data);
-  auto dec_message = decrypted_data.first;
   if (!decrypted_data.second) {
     //this->cli_driver->print_error("MAC verification failed.");
     this->network_driver->disconnect();
     return;
   }
+  auto dec_message = decrypted_data.first;
   CUSTOM_LOG(lg, debug) << "Received blinded";
   RegistrarToVoter_Blind_Signature_Message r2v_sig_s;
   r2v_sig_s.deserialize(dec_message);

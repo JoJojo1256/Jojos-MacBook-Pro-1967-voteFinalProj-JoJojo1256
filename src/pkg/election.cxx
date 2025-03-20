@@ -104,9 +104,6 @@ bool ElectionClient::VerifyVoteZKP(
     return false;
   }
 
-
-
-
   if (CryptoPP::ModularExponentiation(DL_G, r0, DL_P) != (a0 * CryptoPP::ModularExponentiation(a, c0, DL_P)) % DL_P) {
     CUSTOM_LOG(lg, debug) << "r0 does not match a0 * a^c0";
     return false;
