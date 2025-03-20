@@ -253,22 +253,21 @@ void VoterClient::HandleVote(std::string input) {
   // TODO: implement me!
   // --------------------------------
   // Exit cleanly.
-  try {
+  
     CUSTOM_LOG(lg, debug) << "Handling vote";
     auto keys = this->HandleKeyExchange(this->RSA_tallyer_verification_key);
     CryptoPP::SecByteBlock AES_key = keys.first;
     CryptoPP::SecByteBlock HMAC_key = keys.second;
-    TallyerToWorld_Vote_Message v2v_sig_s;
-    v2v_sig_s.vote = this->vote;
-    v2v_sig_s.zkp = this->vote_zkp;
-    v2v_sig_s.unblinded_signature = this->crypto_driver->RSA_BLIND_unblind(
+
+    CryptoPP::Integer unblinded_signature = this->crypto_driver->RSA_BLIND_unblind(
         this->RSA_registrar_verification_key, this->registrar_signature,
         this->blind);
-    std::vector<unsigned char> v2v_sig_s_data = this->crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &v2v_sig_s);
-    this->network_driver->send(v2v_sig_s_data);
-  } catch (std::exception &e) {
-    //this->cli_driver->print_error(e.what());
-  }
+  VoterToTallyer_Vote_Message vote_msg;
+  vote_msg.vote = this->vote;
+  vote_msg.zkp = this->vote_zkp;
+  vote_msg.unblinded_signature = unblinded_signature;
+  std::vector<unsigned char> data_to_send = this->crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &vote_msg);
+  this->network_driver->send(data_to_send);
   this->network_driver->disconnect();
 }
 

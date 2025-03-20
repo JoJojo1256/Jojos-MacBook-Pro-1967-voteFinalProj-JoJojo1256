@@ -185,8 +185,6 @@ void RegistrarClient::HandleRegister(
     response.registrar_signature = signature;
     std::vector<unsigned char> response_data = crypto_driver->encrypt_and_tag(
         AES_key, HMAC_key, &response);
-    network_driver->send(response_data);
-    network_driver->disconnect();
-  
+    network_driver->send(response_data);  
   network_driver->disconnect();
 }
