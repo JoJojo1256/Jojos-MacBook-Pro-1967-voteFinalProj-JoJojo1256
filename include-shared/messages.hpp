@@ -32,6 +32,7 @@ enum T {
   PartialDecryption_Struct = 10,
   DecryptionZKP_Struct = 11,
   ArbiterToWorld_PartialDecryption_Message = 12,
+  VoteVector = 13,
 };
 };
 MessageType::T get_message_type(std::vector<unsigned char> &data);
@@ -78,6 +79,29 @@ struct Vote_Ciphertext : public Serializable {
   void serialize(std::vector<unsigned char> &data);
   int deserialize(std::vector<unsigned char> &data);
 };
+
+//Struct for Vote Vector
+struct VoteVector : public Serializable {
+  std::vector<Vote_Ciphertext> votes;
+
+  void serialize(std::vector<unsigned char> &data);
+  int deserialize(std::vector<unsigned char> &data);
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ================================================
 // KEY EXCHANGE
@@ -153,6 +177,34 @@ struct TallyerToWorld_Vote_Message : public Serializable {
   CryptoPP::Integer unblinded_signature;
   std::string
       tallyer_signature; // computed on vote || zkp || unblinded_signature
+
+  void serialize(std::vector<unsigned char> &data);
+  int deserialize(std::vector<unsigned char> &data);
+};
+
+struct VoteVectorZKP : public Serializable {
+  std::vector<VoteZKP_Struct> per_bit_proofs; // one for each ciphertext
+  CryptoPP::Integer sum_commitment;           // optional, if using sum commitment
+  CryptoPP::Integer sum_proof;                // or whatever format your sum ZKP uses
+
+  void serialize(std::vector<unsigned char> &data);
+  int deserialize(std::vector<unsigned char> &data);
+};
+
+struct VoterToTallyer_VoteVector_Message : public Serializable {
+  VoteVector vote_vector;
+  CryptoPP::Integer unblinded_signature;
+  VoteVectorZKP zkp;
+
+  void serialize(std::vector<unsigned char> &data);
+  int deserialize(std::vector<unsigned char> &data);
+};
+
+struct TallyerToWorld_VoteVector_Message : public Serializable {
+  VoteVector vote_vector;
+  VoteVectorZKP zkp;
+  CryptoPP::Integer unblinded_signature;
+  std::string tallyer_signature;
 
   void serialize(std::vector<unsigned char> &data);
   int deserialize(std::vector<unsigned char> &data);
