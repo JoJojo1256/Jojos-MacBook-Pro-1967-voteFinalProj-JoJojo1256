@@ -516,6 +516,48 @@ int ArbiterToWorld_PartialDecryption_Message::deserialize(
   return n;
 }
 
+
+//new vector vote serialize/deserialize
+
+void Vector_Vote_Ciphertext::serialize(std::vector<unsigned char>& data) const {
+  // Write number of votes
+  uint32_t num_votes = votes.size();
+  data.insert(data.end(), (unsigned char*)&num_votes, 
+             (unsigned char*)&num_votes + sizeof(uint32_t));
+             
+  // Write each vote
+  for (const auto& vote : votes) {
+    std::vector<unsigned char> vote_data;
+    vote.serialize(vote_data);
+    data.insert(data.end(), vote_data.begin(), vote_data.end());
+  }
+}
+
+void Vector_Vote_Ciphertext::deserialize(const std::vector<unsigned char>& data) {
+  // Read number of votes
+  uint32_t num_votes;
+  std::memcpy(&num_votes, data.data(), sizeof(uint32_t));
+  
+  // Read each vote
+  size_t offset = sizeof(uint32_t);
+  votes.clear();
+  
+  for (uint32_t i = 0; i < num_votes; i++) {
+    Vote_Ciphertext vote;
+    // Calculate size of each vote data
+    // (This depends on your Vote_Ciphertext serialization)
+    size_t vote_size = /* calculate from your implementation */;
+    
+    std::vector<unsigned char> vote_data(
+        data.begin() + offset, 
+        data.begin() + offset + vote_size);
+        
+    vote.deserialize(vote_data);
+    votes.push_back(vote);
+    offset += vote_size;
+  }
+}
+
 // ================================================
 // SIGNING HELPERS
 // ================================================
@@ -556,4 +598,30 @@ concat_vote_zkp_and_signature(Vote_Ciphertext &vote, VoteZKP_Struct &zkp,
   v.insert(v.end(), zkp_data.begin(), zkp_data.end());
   v.insert(v.end(), signature_data.begin(), signature_data.end());
   return v;
+}
+
+
+
+std::vector<unsigned char> concat_vector_vote_zkp_and_signature(
+    const Vector_Vote_Ciphertext& vote, 
+    const VectorVoteZKP_Struct& zkp,
+    const CryptoPP::Integer& signature) {
+    
+  std::vector<unsigned char> result;
+  
+  // Serialize vote
+  std::vector<unsigned char> vote_data;
+  vote.serialize(vote_data);
+  result.insert(result.end(), vote_data.begin(), vote_data.end());
+  
+  // Serialize ZKP
+  std::vector<unsigned char> zkp_data;
+  zkp.serialize(zkp_data);
+  result.insert(result.end(), zkp_data.begin(), zkp_data.end());
+  
+  // Serialize signature
+  std::vector<unsigned char> sig_data = integer_to_bytes(signature);
+  result.insert(result.end(), sig_data.begin(), sig_data.end());
+  
+  return result;
 }

@@ -164,11 +164,24 @@ void VoterClient::HandleRegister(std::string input) {
   }
   this->network_driver->connect(args[1], std::stoi(args[2]));
 
-  // Load some info from config into variables
-  std::string voter_id = this->voter_config.voter_id;
-  CryptoPP::Integer raw_vote = CryptoPP::Integer(std::stoi(args[3]));
 
-  // TODO: implement me!
+  // Parse selected candidates
+  std::vector<std::string> selected_indices = string_split(args[3], ',');
+  size_t num_candidates = this->voter_config.num_candidates; // From config
+  CryptoPP::Integer k(selected_indices.size());
+  
+
+  // Create vote vector
+  std::vector<CryptoPP::Integer> vote_vector(num_candidates, CryptoPP::Integer::Zero());
+  for (const auto& index_str : selected_indices) {
+    size_t index = std::stoi(index_str);
+    if (index >= num_candidates) {
+      this->cli_driver->print_warning("Invalid candidate index: " + index_str);
+      return;
+    }
+    vote_vector[index] = CryptoPP::Integer::One();
+  }
+
 
   auto keys = this->HandleKeyExchange(this->RSA_registrar_verification_key);
   CryptoPP::SecByteBlock AES_key = keys.first;
@@ -177,20 +190,19 @@ void VoterClient::HandleRegister(std::string input) {
   // Save the ElGamal encrypted vote, ZKP, registrar signature, and blind
   // to both memory and disk
   
- 
-
-  auto vote = ElectionClient::GenerateVote(raw_vote, this->EG_arbiter_public_key);
-  Vote_Ciphertext vote_s = vote.first;
-  VoteZKP_Struct vote_zkp = vote.second;
-  CUSTOM_LOG(lg, debug) << "Generated vote and zkp";
-
+  // Generate vector vote
+  auto vote_result = ElectionClient::GenerateVectorVote(vote_vector, this->EG_arbiter_public_key, k);
+  Vector_Vote_Ciphertext vote_s = vote_result.first;
+  VectorVoteZKP_Struct vote_zkp = vote_result.second;
+  
+  // Blind the vote
   auto blind_vote = this->crypto_driver->RSA_BLIND_blind(this->RSA_registrar_verification_key, vote_s);
   CryptoPP::Integer blind = blind_vote.second;
   CryptoPP::Integer blinded_vote = blind_vote.first;
   CUSTOM_LOG(lg, debug) << "Blinded vote";
   
   VoterToRegistrar_Register_Message blinded_vote_msg;
-  blinded_vote_msg.id = voter_id;
+  blinded_vote_msg.id = this->voter_config.voter_id;
   blinded_vote_msg.vote = blinded_vote;
   std::vector<unsigned char> data_to_send;
   data_to_send = crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &blinded_vote_msg);
@@ -218,8 +230,10 @@ void VoterClient::HandleRegister(std::string input) {
   this->vote_zkp = vote_zkp;
   this->registrar_signature = r2v_sig_s.registrar_signature;
   this->blind = blind;
-  SaveVote(this->voter_config.voter_vote_path, vote_s);
-  SaveVoteZKP(this->voter_config.voter_vote_zkp_path, vote_zkp);
+  //SaveVote(this->voter_config.voter_vote_path, vote_s);
+  //SaveVoteZKP(this->voter_config.voter_vote_zkp_path, vote_zkp);
+  SaveVectorVote(this->voter_config.voter_vector_vote_path, vote_s);
+  SaveVectorVoteZKP(this->voter_config.voter_vector_vote_zkp_path, vote_zkp);
   SaveInteger(this->voter_config.voter_registrar_signature_path,
               r2v_sig_s.registrar_signature);
   SaveInteger(this->voter_config.voter_blind_path, blind);
@@ -349,4 +363,48 @@ std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> VoterClient::DoVerify() {
     vote_0 = total_votes - res;
     return std::make_tuple(vote_0, vote_1, success);
   
+}
+
+std::tuple<std::vector<CryptoPP::Integer>, bool> VoterClient::DoVerifyVector() {
+  // Load election public key
+  // Load all vector votes
+  std::vector<VectorVoteRow> all_votes = this->db_driver->all_vector_votes();
+  std::vector<std::vector<PartialDecryptionRow>> all_partial_decryptions = 
+      this->db_driver->all_vector_partial_decryptions();
+  
+  // Verify all votes
+  std::vector<VectorVoteRow> valid_votes;
+  for (const auto& vote_row : all_votes) {
+    bool registrar_signature_valid = this->crypto_driver->RSA_BLIND_verify(
+        this->RSA_registrar_verification_key, vote_row.vote, vote_row.unblinded_signature);
+        
+    auto msg = concat_vector_vote_zkp_and_signature(
+        vote_row.vote, vote_row.zkp, vote_row.unblinded_signature);
+        
+    bool sig_valid = this->crypto_driver->RSA_verify(
+        this->RSA_tallyer_verification_key, msg, vote_row.tallyer_signature);
+        
+    bool zkp_valid = ElectionClient::VerifyVectorVoteZKP(
+        std::make_pair(vote_row.vote, vote_row.zkp), 
+        this->EG_arbiter_public_key,
+        CryptoPP::Integer(this->voter_config.k_value));
+        
+    if (registrar_signature_valid && sig_valid && zkp_valid) {
+      valid_votes.push_back(vote_row);
+    }
+  }
+  
+  // Verify partial decryptions
+  std::vector<std::vector<PartialDecryptionRow>> valid_partial_decryptions;
+  // ... (similar to existing logic)
+  
+  // Combine votes for each candidate
+  std::vector<Vote_Ciphertext> combined_votes = 
+      ElectionClient::CombineVectorVotes(valid_votes);
+      
+  // Get final results
+  std::vector<CryptoPP::Integer> results = 
+      ElectionClient::CombineVectorResults(combined_votes, valid_partial_decryptions);
+      
+  return std::make_tuple(results, true);
 }
