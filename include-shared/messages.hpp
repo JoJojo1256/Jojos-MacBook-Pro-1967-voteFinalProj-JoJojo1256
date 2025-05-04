@@ -88,6 +88,19 @@ struct VoteVector : public Serializable {
   int deserialize(std::vector<unsigned char> &data);
 };
 
+// Vector vote ZKP structure
+struct VectorVoteZKP_Struct {
+  std::vector<VoteZKP_Struct> individual_zkps; // Proves each vote is 0 or 1
+  
+  // Structure for proving sum equals k
+  struct {
+    CryptoPP::Integer A;  // g^r'
+    CryptoPP::Integer B;  // pk^r'
+    CryptoPP::Integer c;  // challenge
+    CryptoPP::Integer r;  // response
+  } sum_zkp;
+};
+
 
 
 

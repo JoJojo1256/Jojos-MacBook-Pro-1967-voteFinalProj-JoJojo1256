@@ -68,6 +68,94 @@ ElectionClient::GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk) {
   return std::make_pair(ciphertext, zkp);
 }
 
+std::pair<Vector_Vote_Ciphertext, VectorVoteZKP_Struct>
+ElectionClient::GenerateVectorVote(const std::vector<CryptoPP::Integer>& votes, 
+                                  CryptoPP::Integer pk,
+                                  CryptoPP::Integer k) {
+  initLogger();
+  
+  // Validate votes count equals k
+  CryptoPP::Integer sum = 0;
+  for (const auto& vote : votes) {
+    if (vote != CryptoPP::Integer::Zero() && vote != CryptoPP::Integer::One()) {
+      CUSTOM_LOG(lg, error) << "Each vote must be 0 or 1";
+      throw std::runtime_error("Each vote must be 0 or 1");
+    }
+    sum = sum + vote;
+  }
+  
+  if (sum != k) {
+    CUSTOM_LOG(lg, error) << "Must select exactly " << k << " candidates";
+    throw std::runtime_error("Must select exactly k candidates");
+  }
+  
+  // Generate individual vote encryptions and ZKPs
+  Vector_Vote_Ciphertext vector_ciphertext;
+  VectorVoteZKP_Struct vector_zkp;
+  
+  // Track sum of randomness for sum ZKP
+  CryptoPP::Integer r_sum = CryptoPP::Integer::Zero();
+  CryptoPP::AutoSeededRandomPool prng;
+  
+  for (const auto& vote : votes) {
+    // Generate random r for this encryption
+    CryptoPP::Integer r(prng, 2, DL_Q - 1);
+    r_sum = (r_sum + r) % DL_Q;
+    
+    // Encrypt the vote
+    Vote_Ciphertext ciphertext;
+    ciphertext.a = CryptoPP::ModularExponentiation(DL_G, r, DL_P);
+    ciphertext.b = a_times_b_mod_c(
+      CryptoPP::ModularExponentiation(pk, r, DL_P),
+      CryptoPP::ModularExponentiation(DL_G, vote, DL_P),
+      DL_P
+    );
+    
+    // Generate ZKP for this vote
+    auto result = GenerateVote(vote, pk);
+    
+    // Store the vote and ZKP
+    vector_ciphertext.votes.push_back(ciphertext);
+    vector_zkp.individual_zkps.push_back(result.second);
+  }
+  
+  // Generate ZKP for sum constraint
+  
+  // 1. Homomorphically combine all votes
+  Vote_Ciphertext combined;
+  combined.a = CryptoPP::Integer::One();
+  combined.b = CryptoPP::Integer::One();
+  
+  for (const auto& vote : vector_ciphertext.votes) {
+    combined.a = a_times_b_mod_c(combined.a, vote.a, DL_P);
+    combined.b = a_times_b_mod_c(combined.b, vote.b, DL_P);
+  }
+  
+  // 2. Adjust for k: combined/g^k should encrypt 0 if sum equals k
+  CryptoPP::Integer adjusted_b = a_times_b_mod_c(
+    combined.b, 
+    CryptoPP::EuclideanMultiplicativeInverse(
+      CryptoPP::ModularExponentiation(DL_G, k, DL_P), 
+      DL_P
+    ), 
+    DL_P
+  );
+  
+  // 3. Create ZKP that adjusted_combined encrypts 0
+  CryptoPP::Integer r_prime(prng, 2, DL_Q - 1);
+  vector_zkp.sum_zkp.A = CryptoPP::ModularExponentiation(DL_G, r_prime, DL_P);
+  vector_zkp.sum_zkp.B = CryptoPP::ModularExponentiation(pk, r_prime, DL_P);
+  
+  // Create challenge
+  CryptoPP::Integer sigma = hash_sum_zkp(pk, combined.a, adjusted_b, 
+                                         vector_zkp.sum_zkp.A, vector_zkp.sum_zkp.B) % DL_Q;
+  
+  vector_zkp.sum_zkp.c = sigma;
+  vector_zkp.sum_zkp.r = (r_prime + a_times_b_mod_c(sigma, r_sum, DL_Q)) % DL_Q;
+  
+  return std::make_pair(vector_ciphertext, vector_zkp);
+}
+
 /**
  * Verify vote zkp.
  */
@@ -116,6 +204,73 @@ bool ElectionClient::VerifyVoteZKP(
 
 }
 
+bool ElectionClient::VerifyVectorVoteZKP(
+  const std::pair<Vector_Vote_Ciphertext, VectorVoteZKP_Struct>& vector_vote, 
+  CryptoPP::Integer pk,
+  CryptoPP::Integer k) {
+initLogger();
+
+// 1. Verify each individual vote ZKP
+for (size_t i = 0; i < vector_vote.first.votes.size(); i++) {
+  if (!VerifyVoteZKP(
+      std::make_pair(vector_vote.first.votes[i], vector_vote.second.individual_zkps[i]), 
+      pk)) {
+    CUSTOM_LOG(lg, debug) << "Individual vote ZKP verification failed for index " << i;
+    return false;
+  }
+}
+
+// 2. Verify the sum constraint ZKP
+// Homomorphically combine all votes
+Vote_Ciphertext combined;
+combined.a = CryptoPP::Integer::One();
+combined.b = CryptoPP::Integer::One();
+
+for (const auto& vote : vector_vote.first.votes) {
+  combined.a = a_times_b_mod_c(combined.a, vote.a, DL_P);
+  combined.b = a_times_b_mod_c(combined.b, vote.b, DL_P);
+}
+
+// Adjust for k: combined/g^k should encrypt 0 if sum equals k
+CryptoPP::Integer adjusted_b = a_times_b_mod_c(
+  combined.b, 
+  CryptoPP::EuclideanMultiplicativeInverse(
+    CryptoPP::ModularExponentiation(DL_G, k, DL_P), 
+    DL_P
+  ), 
+  DL_P
+);
+
+// Verify challenge
+CryptoPP::Integer expected_sigma = hash_sum_zkp(pk, combined.a, adjusted_b, 
+                                       vector_vote.second.sum_zkp.A, 
+                                       vector_vote.second.sum_zkp.B) % DL_Q;
+
+if (expected_sigma != vector_vote.second.sum_zkp.c) {
+  CUSTOM_LOG(lg, debug) << "Sum ZKP challenge verification failed";
+  return false;
+}
+
+// Verify proof values
+if (CryptoPP::ModularExponentiation(DL_G, vector_vote.second.sum_zkp.r, DL_P) != 
+    a_times_b_mod_c(vector_vote.second.sum_zkp.A, 
+                    CryptoPP::ModularExponentiation(combined.a, vector_vote.second.sum_zkp.c, DL_P), 
+                    DL_P)) {
+  CUSTOM_LOG(lg, debug) << "Sum ZKP first verification equation failed";
+  return false;
+}
+
+if (CryptoPP::ModularExponentiation(pk, vector_vote.second.sum_zkp.r, DL_P) != 
+    a_times_b_mod_c(vector_vote.second.sum_zkp.B, 
+                    CryptoPP::ModularExponentiation(adjusted_b, vector_vote.second.sum_zkp.c, DL_P), 
+                    DL_P)) {
+  CUSTOM_LOG(lg, debug) << "Sum ZKP second verification equation failed";
+  return false;
+}
+
+return true;
+}
+
 /**
  * Generate partial decryption and zkp.
  */
@@ -136,6 +291,22 @@ ElectionClient::PartialDecrypt(Vote_Ciphertext combined_vote,
   CryptoPP::Integer sigma = hash_dec_zkp(pk, combined_vote.a, combined_vote.b, zkp.u, zkp.v);
   zkp.s = (r + a_times_b_mod_c(sigma, sk, DL_Q)) % DL_Q;
   return std::make_pair(partial_decryption, zkp);
+}
+
+std::vector<std::pair<PartialDecryption_Struct, DecryptionZKP_Struct>>
+ElectionClient::PartialDecryptVector(
+    const std::vector<Vote_Ciphertext>& combined_votes,
+    CryptoPP::Integer pk, 
+    CryptoPP::Integer sk) {
+  initLogger();
+  
+  std::vector<std::pair<PartialDecryption_Struct, DecryptionZKP_Struct>> results;
+  
+  for (const auto& combined_vote : combined_votes) {
+    results.push_back(PartialDecrypt(combined_vote, pk, sk));
+  }
+  
+  return results;
 }
 
 /**
@@ -182,6 +353,35 @@ Vote_Ciphertext ElectionClient::CombineVotes(std::vector<VoteRow> all_votes) {
   return combined_vote;
 }
 
+std::vector<Vote_Ciphertext> ElectionClient::CombineVectorVotes(
+  const std::vector<VectorVoteRow>& all_votes) {
+initLogger();
+
+if (all_votes.empty()) {
+  CUSTOM_LOG(lg, warning) << "No votes to combine";
+  return {};
+}
+
+// Initialize combined votes for each candidate
+size_t num_candidates = all_votes[0].vote.votes.size();
+std::vector<Vote_Ciphertext> combined_votes(num_candidates);
+
+for (size_t i = 0; i < num_candidates; i++) {
+  combined_votes[i].a = CryptoPP::Integer::One();
+  combined_votes[i].b = CryptoPP::Integer::One();
+}
+
+// Homomorphically combine votes for each candidate position
+for (const auto& voter_row : all_votes) {
+  for (size_t i = 0; i < num_candidates; i++) {
+    combined_votes[i].a = a_times_b_mod_c(combined_votes[i].a, voter_row.vote.votes[i].a, DL_P);
+    combined_votes[i].b = a_times_b_mod_c(combined_votes[i].b, voter_row.vote.votes[i].b, DL_P);
+  }
+}
+
+return combined_votes;
+}
+
 /**
  * Combines partial decryptions and returns final vote count.
  */
@@ -208,4 +408,47 @@ CryptoPP::Integer ElectionClient::CombineResults(
     count++;
   }
   return count;
+}
+
+std::vector<CryptoPP::Integer> ElectionClient::CombineVectorResults(
+  const std::vector<Vote_Ciphertext>& combined_votes,
+  const std::vector<std::vector<PartialDecryptionRow>>& all_partial_decryptions) {
+initLogger();
+
+std::vector<CryptoPP::Integer> results;
+
+for (size_t i = 0; i < combined_votes.size(); i++) {
+  results.push_back(CombineResults(combined_votes[i], all_partial_decryptions[i]));
+}
+
+return results;
+}
+
+CryptoPP::Integer hash_sum_zkp(
+  CryptoPP::Integer pk, 
+  CryptoPP::Integer a, 
+  CryptoPP::Integer b,
+  CryptoPP::Integer A, 
+  CryptoPP::Integer B) {
+
+CryptoPP::SHA256 hash;
+byte digest[CryptoPP::SHA256::DIGESTSIZE];
+
+// Convert all integers to byte arrays
+std::vector<byte> pk_bytes = integer_to_bytes(pk);
+std::vector<byte> a_bytes = integer_to_bytes(a);
+std::vector<byte> b_bytes = integer_to_bytes(b);
+std::vector<byte> A_bytes = integer_to_bytes(A);
+std::vector<byte> B_bytes = integer_to_bytes(B);
+
+// Update hash with all values
+hash.Update(pk_bytes.data(), pk_bytes.size());
+hash.Update(a_bytes.data(), a_bytes.size());
+hash.Update(b_bytes.data(), b_bytes.size());
+hash.Update(A_bytes.data(), A_bytes.size());
+hash.Update(B_bytes.data(), B_bytes.size());
+
+hash.Final(digest);
+
+return bytes_to_integer(digest, CryptoPP::SHA256::DIGESTSIZE);
 }
