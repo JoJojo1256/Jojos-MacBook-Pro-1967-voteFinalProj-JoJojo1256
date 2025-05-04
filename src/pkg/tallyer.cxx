@@ -198,3 +198,64 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
     // Mark the user as having voted
     network_driver->disconnect();
 }
+
+void TallyerClient::HandleVectorTally(
+  std::shared_ptr<NetworkDriver> network_driver,
+  std::shared_ptr<CryptoDriver> crypto_driver) {
+
+  // Handle key exchange
+  auto keys = HandleKeyExchange(network_driver, crypto_driver);
+  CryptoPP::SecByteBlock AES_key = keys.first;
+  CryptoPP::SecByteBlock HMAC_key = keys.second;
+
+  // Receive vote data
+  std::vector<unsigned char> encrypted_data = network_driver->read();
+  auto decrypted_data = crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
+
+  if (!decrypted_data.second) {
+    network_driver->disconnect();
+    return;
+  }
+
+  // Parse vote message
+  VoterToTallyer_VectorVote_Message vote;
+  vote.deserialize(decrypted_data.first);
+
+  // Check if the vote already exists
+  if (this->db_driver->vector_vote_exists(vote.vote)) {
+    network_driver->disconnect();
+    return;
+  }
+
+  // Verify the registrar's signature
+  if (!crypto_driver->RSA_BLIND_verify_vector(
+      this->RSA_registrar_verification_key, vote.vote, vote.unblinded_signature)) {
+    network_driver->disconnect();
+    return;
+  }
+
+  // Verify the ZKP
+  if (!ElectionClient::VerifyVectorVoteZKP(
+      std::make_pair(vote.vote, vote.zkp), 
+      this->EG_arbiter_public_key,
+      CryptoPP::Integer(this->tallyer_config.k_value))) {
+    network_driver->disconnect();
+    return;
+  }
+
+  // Sign the vote
+  std::vector<unsigned char> serialized_vote = concat_vector_vote_zkp_and_signature(
+      vote.vote, vote.zkp, vote.unblinded_signature);
+
+  TallyerToWorld_VectorVote_Message signed_vote;
+  signed_vote.vote = vote.vote;
+  signed_vote.zkp = vote.zkp;
+  signed_vote.unblinded_signature = vote.unblinded_signature;
+  signed_vote.tallyer_signature = crypto_driver->RSA_sign(
+      this->RSA_tallyer_signing_key, serialized_vote);
+
+  // Save to database
+  this->db_driver->insert_vector_vote(signed_vote);
+
+  network_driver->disconnect();
+}

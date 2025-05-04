@@ -190,3 +190,56 @@ void RegistrarClient::HandleRegister(
     network_driver->send(response_data);  
   network_driver->disconnect();
 }
+
+void RegistrarClient::HandleVectorRegister(
+  std::shared_ptr<NetworkDriver> network_driver,
+  std::shared_ptr<CryptoDriver> crypto_driver) {
+
+  // Handle key exchange
+  auto keys = HandleKeyExchange(network_driver, crypto_driver);
+  CryptoPP::SecByteBlock AES_key = keys.first;
+  CryptoPP::SecByteBlock HMAC_key = keys.second;
+
+  // Receive registration data
+  std::vector<unsigned char> encrypted_data = network_driver->read();
+  auto decrypted_data = crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
+
+  if (!decrypted_data.second) {
+    network_driver->disconnect();
+    return;
+  }
+
+  // Parse registration message
+  VoterToRegistrar_VectorRegister_Message user_data;
+  user_data.deserialize(decrypted_data.first);
+
+  // Check if voter is already registered
+  VoterRow voter = this->db_driver->find_voter(user_data.id);
+
+  CryptoPP::Integer signature;
+  if (!voter.id.empty()) {
+    // If already registered, return existing signature
+    signature = voter.registrar_signature;
+  } else {
+    // Otherwise, sign the blinded vector vote
+    signature = crypto_driver->RSA_BLIND_sign(
+        this->RSA_registrar_signing_key, user_data.vote);
+    
+    // Add voter to database
+    VoterRow new_voter;
+    new_voter.id = user_data.id;
+    new_voter.registrar_signature = signature;
+    this->db_driver->insert_voter(new_voter);
+  }
+
+  // Send response
+  RegistrarToVoter_Blind_Signature_Message response;
+  response.id = user_data.id;
+  response.registrar_signature = signature;
+
+  std::vector<unsigned char> response_data = crypto_driver->encrypt_and_tag(
+      AES_key, HMAC_key, &response);
+  network_driver->send(response_data);
+
+  network_driver->disconnect();
+}

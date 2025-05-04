@@ -25,6 +25,9 @@ public:
                     std::shared_ptr<CryptoDriver> crypto_driver);
   void HandleRegister(std::shared_ptr<NetworkDriver> network_driver,
                       std::shared_ptr<CryptoDriver> crypto_driver);
+  void RegistrarClient::HandleVectorRegister(
+                      std::shared_ptr<NetworkDriver> network_driver,
+                      std::shared_ptr<CryptoDriver> crypto_driver)
 
 private:
   RegistrarConfig registrar_config;

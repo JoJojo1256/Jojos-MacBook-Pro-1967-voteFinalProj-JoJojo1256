@@ -25,6 +25,9 @@ public:
                     std::shared_ptr<CryptoDriver> crypto_driver);
   void HandleTally(std::shared_ptr<NetworkDriver> network_driver,
                    std::shared_ptr<CryptoDriver> crypto_driver);
+  void TallyerClient::HandleVectorTally(
+                  std::shared_ptr<NetworkDriver> network_driver,
+                  std::shared_ptr<CryptoDriver> crypto_driver)
 
 private:
   TallyerConfig tallyer_config;

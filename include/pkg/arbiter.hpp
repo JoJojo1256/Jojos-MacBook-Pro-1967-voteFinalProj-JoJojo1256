@@ -21,6 +21,7 @@ public:
   void run();
   void HandleKeygen(std::string input);
   void HandleAdjudicate(std::string input);
+  void HandleVectorAdjudicate(std::string _);
 
 private:
   ArbiterConfig arbiter_config;
