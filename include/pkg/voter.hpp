@@ -28,6 +28,7 @@ public:
   void HandleVote(std::string input);
   void HandleVerify(std::string input);
   std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> DoVerify();
+  std::tuple<std::vector<CryptoPP::Integer>, bool> VoterClient::DoVerifyVector() ;
 
 private:
   VoterConfig voter_config;
