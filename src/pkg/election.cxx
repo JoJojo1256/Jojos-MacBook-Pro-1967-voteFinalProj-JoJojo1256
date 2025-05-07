@@ -13,14 +13,14 @@ src::severity_logger<logging::trivial::severity_level> lg;
 /**
  * Generate Vote and ZKP.
  */
-std::pair<Vote_Ciphertext, VoteZKP_Struct>
+std::tuple<Vote_Ciphertext, VoteZKP_Struct, CryptoPP::Integer>
 ElectionClient::GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk) {
   initLogger();
   // TODO: implement me!
   Vote_Ciphertext ciphertext;
   VoteZKP_Struct zkp;
   CryptoPP::AutoSeededRandomPool prng;
-  CryptoPP::Integer r(prng, 2, DL_Q - 1);
+  CryptoPP::Integer r(prng, 1, DL_Q - 1);
 
   ciphertext.a = CryptoPP::ModularExponentiation(DL_G, r, DL_P);
   ciphertext.b = a_times_b_mod_c(CryptoPP::ModularExponentiation(pk, r, DL_P), CryptoPP::ModularExponentiation(DL_G, vote, DL_P), DL_P);
@@ -28,15 +28,15 @@ ElectionClient::GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk) {
 
 
   if (vote == CryptoPP::Integer::One()) {
-    CryptoPP::Integer double_r_prime_zero(prng, 2, DL_Q - 1);
-    CryptoPP::Integer sigma_zero(prng, 2, DL_Q - 1);
+    CryptoPP::Integer double_r_prime_zero(prng, 1, DL_Q - 1);
+    CryptoPP::Integer sigma_zero(prng, 1, DL_Q - 1);
     CryptoPP::Integer a0 = a_times_b_mod_c(CryptoPP::ModularExponentiation(DL_G, double_r_prime_zero, DL_P), CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.a, sigma_zero, DL_P)), DL_P), DL_P);
     CryptoPP::Integer b0 = a_times_b_mod_c(CryptoPP::ModularExponentiation(pk, double_r_prime_zero, DL_P), CryptoPP::EuclideanMultiplicativeInverse((CryptoPP::ModularExponentiation(ciphertext.b, sigma_zero, DL_P)), DL_P), DL_P);
     zkp.a0 = a0;
     zkp.b0 = b0;
     zkp.c0 = sigma_zero;
     zkp.r0 = double_r_prime_zero;
-    CryptoPP::Integer r_prime_one = CryptoPP::Integer(prng, 2, DL_Q - 1);
+    CryptoPP::Integer r_prime_one = CryptoPP::Integer(prng, 1, DL_Q - 1);
     zkp.a1 = CryptoPP::ModularExponentiation(DL_G, r_prime_one, DL_P);
     zkp.b1 = CryptoPP::ModularExponentiation(pk, r_prime_one, DL_P);
     CryptoPP::Integer big_sigma = hash_vote_zkp(pk, ciphertext.a, ciphertext.b, zkp.a0, zkp.b0, zkp.a1, zkp.b1) % DL_Q;
@@ -63,9 +63,9 @@ ElectionClient::GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk) {
   } else {
     CUSTOM_LOG(lg, error) << "Vote is not 0 or 1";
     //should never get here
-    return std::make_pair(ciphertext, zkp);
+    return std::make_tuple(ciphertext, zkp, r);
   }
-  return std::make_pair(ciphertext, zkp);
+  return std::make_tuple(ciphertext, zkp, r);
 }
 
 /**

@@ -18,7 +18,7 @@
 
 class ElectionClient {
 public:
-  static std::pair<Vote_Ciphertext, VoteZKP_Struct>
+  static std::tuple<Vote_Ciphertext, VoteZKP_Struct, CryptoPP::Integer>
   GenerateVote(CryptoPP::Integer vote, CryptoPP::Integer pk);
   static bool VerifyVoteZKP(std::pair<Vote_Ciphertext, VoteZKP_Struct> vote,
                             CryptoPP::Integer pk);
