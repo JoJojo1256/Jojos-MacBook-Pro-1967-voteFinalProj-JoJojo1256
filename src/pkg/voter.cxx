@@ -446,7 +446,7 @@ std::pair<std::vector<CryptoPP::Integer>, bool> VoterClient::DoVerify() {
       partial_dec_map[all_partial_dec[i].id].push_back(all_partial_dec[i]);
     }
 
-    CryptoPP::Integer pki;
+  CryptoPP::Integer pki;
   for (auto it = partial_dec_map.begin(); it != partial_dec_map.end(); ++it){
     for (size_t i = 0; i < it->second.size(); ++i){
       PartialDecryptionRow partial_dec = it->second[i];

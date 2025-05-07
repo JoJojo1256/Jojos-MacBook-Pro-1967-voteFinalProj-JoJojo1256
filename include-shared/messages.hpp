@@ -144,6 +144,17 @@ struct VoteZKP_Struct : public Serializable {
   int deserialize(std::vector<unsigned char> &data);
 };
 
+struct Vector_Vote_ZKP : public Serializable {
+  CryptoPP::Integer c1;
+  CryptoPP::Integer c2;
+  CryptoPP::Integer a;
+  CryptoPP::Integer b;
+  CryptoPP::Integer r;
+
+  void serialize(std::vector<unsigned char> &data);
+  int deserialize(std::vector<unsigned char> &data);
+};
+
 struct VoterToTallyer_Vote_Message : public Serializable {
   Vote_Ciphertext vote;
   CryptoPP::Integer unblinded_signature;
@@ -220,19 +231,4 @@ std::vector<unsigned char>
 concat_vote_zkp_and_signature(Vote_Ciphertext &vote, VoteZKP_Struct &zkp,
                               CryptoPP::Integer &signature);
 
-
-// ================================================
-// NEW STRUCTS
-// ================================================         
-
-struct Vector_Vote_ZKP : public Serializable {
-  CryptoPP::Integer c1;
-  CryptoPP::Integer c2;
-  CryptoPP::Integer a;
-  CryptoPP::Integer b;
-  CryptoPP::Integer r;
-
-  void serialize(std::vector<unsigned char> &data);
-  int deserialize(std::vector<unsigned char> &data);
-};
 
