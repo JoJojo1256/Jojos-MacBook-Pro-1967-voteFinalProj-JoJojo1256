@@ -35,35 +35,9 @@ public:
   CombineResults(Vote_Ciphertext combined_vote,
                  std::vector<PartialDecryptionRow> all_partial_decryptions);
 
-  // Vector vote functions
-  static std::pair<Vector_Vote_Ciphertext, VectorVoteZKP_Struct>
-  GenerateVectorVote(const std::vector<CryptoPP::Integer>& votes, 
-                    CryptoPP::Integer pk,
-                    CryptoPP::Integer k);
-
-  static bool VerifyVectorVoteZKP(
-                  const std::pair<Vector_Vote_Ciphertext, VectorVoteZKP_Struct>& vector_vote, 
-                  CryptoPP::Integer pk,
-                  CryptoPP::Integer k);
-
-  static std::vector<Vote_Ciphertext> CombineVectorVotes(
-                  const std::vector<VectorVoteRow>& all_votes);
-                    
-  static std::vector<std::pair<PartialDecryption_Struct, DecryptionZKP_Struct>>
-  PartialDecryptVector(
-                  const std::vector<Vote_Ciphertext>& combined_votes,
-                  CryptoPP::Integer pk, 
-                  CryptoPP::Integer sk);
-                    
-  static std::vector<CryptoPP::Integer> CombineVectorResults(
-                  const std::vector<Vote_Ciphertext>& combined_votes,
-                  const std::vector<std::vector<PartialDecryptionRow>>& all_partial_decryptions);
-
-  // Helper function for sum ZKP
-  static CryptoPP::Integer hash_sum_zkp(
-    CryptoPP::Integer pk, 
-    CryptoPP::Integer a, 
-    CryptoPP::Integer b,
-    CryptoPP::Integer A, 
-    CryptoPP::Integer B);
+  static Vector_Vote_ZKP GenerateVectorVotesZKP(
+                 std::vector<Vote_Ciphertext> votes,
+                 CryptoPP::Integer pk, CryptoPP::Integer R);
+            
+  static bool VerifyVectorVotesZKP(Vector_Vote_ZKP zkp, CryptoPP::Integer pk, int k);
 };

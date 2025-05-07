@@ -86,6 +86,10 @@
     "future": "cpp",
     "cinttypes": "cpp",
     "typeindex": "cpp",
-    "__functional_base": "cpp"
+    "__functional_base": "cpp",
+    "span": "cpp",
+    "strstream": "cpp",
+    "shared_mutex": "cpp",
+    "cfenv": "cpp"
   }
 }

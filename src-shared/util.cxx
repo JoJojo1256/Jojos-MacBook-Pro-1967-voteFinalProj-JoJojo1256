@@ -176,3 +176,29 @@ CryptoPP::Integer hash_dec_zkp(CryptoPP::Integer pk, CryptoPP::Integer a,
       new CryptoPP::HashFilter(hash, new CryptoPP::StringSink(encodedHex)));
   return CryptoPP::Integer(("0x" + encodedHex).c_str());
 }
+
+/** 
+ * hash vector vote zkp
+ */
+
+
+CryptoPP::Integer hash_vector_vote_zkp(CryptoPP::Integer pk, 
+                                       CryptoPP::Integer C1,
+                                       CryptoPP::Integer C2, 
+                                       CryptoPP::Integer A,
+                                       CryptoPP::Integer B) {
+  std::string res;
+  res += CryptoPP::IntToString(pk);
+  res += CryptoPP::IntToString(C1);
+  res += CryptoPP::IntToString(C2);
+  res += CryptoPP::IntToString(A);
+  res += CryptoPP::IntToString(B);
+                                      
+  CryptoPP::SHA256 hash;
+  std::string encodedHex;
+  CryptoPP::HexEncoder encoder(new CryptoPP::StringSink(encodedHex));
+  CryptoPP::StringSource(
+    res, true, 
+    new CryptoPP::HashFilter(hash, new CryptoPP::StringSink(encodedHex)));
+  return CryptoPP::Integer(("0x" + encodedHex).c_str());                      
+}

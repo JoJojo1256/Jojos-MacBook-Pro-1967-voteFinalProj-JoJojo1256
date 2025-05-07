@@ -27,8 +27,7 @@ public:
   void HandleRegister(std::string input);
   void HandleVote(std::string input);
   void HandleVerify(std::string input);
-  std::tuple<CryptoPP::Integer, CryptoPP::Integer, bool> DoVerify();
-  std::tuple<std::vector<CryptoPP::Integer>, bool> VoterClient::DoVerifyVector() ;
+  std::pair<std::vector<CryptoPP::Integer>, bool> DoVerify();
 
 private:
   VoterConfig voter_config;
@@ -50,4 +49,12 @@ private:
   CryptoPP::RSA::PrivateKey RSA_voter_signing_key;
   CryptoPP::RSA::PublicKey RSA_registrar_verification_key;
   CryptoPP::RSA::PublicKey RSA_tallyer_verification_key;
+
+  std::string id;
+
+  std::vector<Vote_Ciphertext> votes;
+  std::vector<VoteZKP_Struct> vote_zkps;
+  std::vector<CryptoPP::Integer> registrar_signatures;
+  std::vector<CryptoPP::Integer> blinds;
+  Vector_Vote_ZKP vector_vote_zkp;
 };

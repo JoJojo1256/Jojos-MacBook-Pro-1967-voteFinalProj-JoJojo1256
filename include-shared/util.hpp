@@ -50,3 +50,7 @@ CryptoPP::Integer hash_vote_zkp(CryptoPP::Integer pk, CryptoPP::Integer a,
 CryptoPP::Integer hash_dec_zkp(CryptoPP::Integer pk, CryptoPP::Integer a,
                                CryptoPP::Integer b, CryptoPP::Integer u,
                                CryptoPP::Integer v);
+
+CryptoPP::Integer hash_vector_vote_zkp(CryptoPP::Integer pk, CryptoPP::Integer C1,
+                                       CryptoPP::Integer C2, CryptoPP::Integer A,
+                                       CryptoPP::Integer B);
