@@ -50,10 +50,10 @@ void DBDriver::init_tables() {
   }
  
   /* 
-  * CHANGE: Modified voter table schema
-  * - Replaced specific columns for individual fields with a single 'value' column
-  * - This change allows storing serialized voter objects instead of individual fields
-  */
+   * CHANGE: Modified voter table schema
+   * - Replaced specific columns for individual fields with a single 'value' column
+   * - This change allows storing serialized voter objects instead of individual fields
+   */
 
   std::string create_vote_query = "CREATE TABLE IF NOT EXISTS vote("
                                   "vote TEXT PRIMARY KEY  NOT NULL, "
@@ -65,7 +65,12 @@ void DBDriver::init_tables() {
     std::cout << "Table created successfully" << std::endl;
   }
 
-  // create partial_decryption table
+  /* 
+   * CHANGE: Modified partial_decryption table schema
+   * - Simplified to use a single 'value' column instead of multiple fields
+   * - Allows storing serialized partial_decryption objects
+   */
+
   std::string create_partial_decryption_query =
       "CREATE TABLE IF NOT EXISTS partial_decryption("
       "arbiter_id TEXT PRIMARY KEY NOT NULL, "
@@ -126,7 +131,12 @@ VoterRow DBDriver::find_voter(std::string id) {
   std::string find_query = "SELECT id, val"
                            "FROM voter WHERE id = ?";
 
-  // Prepare statement.
+  /* 
+   * CHANGE: Updated find_voter query
+   * - Changed the SQL to match new schema with 'value' field
+   * - Old query was selecting specific fields (id, registrar_signature)
+   * - New query gets id and serialized value column
+   */
   sqlite3_stmt *stmt;
   sqlite3_prepare_v2(this->db, find_query.c_str(), find_query.length(), &stmt,
                      nullptr);
@@ -150,6 +160,12 @@ VoterRow DBDriver::find_voter(std::string id) {
         std::string data = std::string((const char *)raw_result, num_bytes);
         std::vector<unsigned char> data_vec = str2chvec(data);
         voter.deserialize(data_vec);
+        /* 
+         * CHANGE: Updated voter deserialization
+         * - Replaced direct field assignment with full deserialization
+         * - Now converts string to byte vector and uses deserialize method
+         * - This handles the complete voter object instead of individual fields
+         */
         break;
       }
     }
@@ -240,6 +256,11 @@ std::vector<VoteRow> DBDriver::all_votes() {
       case 0:
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
         vote.deserialize(data);
+        /* 
+         * CHANGE: Updated vote deserialization
+         * - Now deserializes complete vote object from value field
+         * - Replaces handling multiple individual fields separately
+         */
         break;
       }
     }
@@ -294,6 +315,11 @@ VoteRow DBDriver::find_vote(Vote_Ciphertext vote_s) {
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
         // vote.zkp.deserialize(data);
         vote.deserialize(data);
+        /* 
+         * CHANGE: Updated vote deserialization 
+         * - Now deserializes the entire vote object from value column
+         * - Replaced specific field deserialization (zkp) with complete object
+         */
         break;
       case 2:
         vote.unblinded_signature =
@@ -329,6 +355,12 @@ VoteRow DBDriver::insert_vote(VoteRow vote) {
 
 
   std::string insert_query = "INSERT INTO vote(vote,value) VALUES(?, ?);";
+  /* 
+   * CHANGE: Updated insert_vote query
+   * - Changed from inserting multiple fields to just vote and value columns
+   * - Simplified to match new schema with serialized objects
+   * - Removed parameters for zkp, unblinded_signature, tallyer_signature
+   */
 
   // Serialize vote fields.
   std::vector<unsigned char> vote_data;
@@ -376,6 +408,7 @@ bool DBDriver::vote_exists(Vote_Ciphertext vote) {
 
   std::string find_query = "SELECT 1 FROM vote WHERE vote = ?";
 
+
   // Serialize vote.
   std::vector<unsigned char> vote_data;
   vote.serialize(vote_data);
@@ -421,11 +454,16 @@ DBDriver::DBDriver::all_partial_decryptions() {
 
   std::string find_query = "SELECT arbiter_id, value FROM partial_decryption";
 
+  /* 
+   * CHANGE: Updated all_partial_decryptions query
+   * - Changed to select arbiter_id and value columns
+   * - Simplified to match new schema with serialized objects
+   */
+
   // Prepare statement.
   sqlite3_stmt *stmt;
   sqlite3_prepare_v2(this->db, find_query.c_str(), find_query.length(), &stmt,
                      nullptr);
-  // std::cout << "[Debug] preparing all_partial_decryptions db statement" << std::endl;
   
 
   // Retreive partial_decryption.
@@ -438,7 +476,6 @@ DBDriver::DBDriver::all_partial_decryptions() {
       std::vector<unsigned char> data;
       switch (colIndex) {
       case 0:
-        // std::cout << "[Debug] deserializing each partial decrypt" << std::endl;
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
         partial_decryption.deserialize(data);
         break;
@@ -446,7 +483,7 @@ DBDriver::DBDriver::all_partial_decryptions() {
     }
     res.push_back(partial_decryption);
   }
-  // std::cout << "[Debug] size of all_partial_decryptions res -> " << res.size() << std::endl;
+
   // Finalize and return.
   int exit = sqlite3_finalize(stmt);
   if (exit != SQLITE_OK) {
@@ -466,6 +503,12 @@ PartialDecryptionRow DBDriver::find_partial_decryption(std::string arbiter_id) {
   std::string find_query =
       "SELECT arbiter_id, value FROM "
       "partial_decryption WHERE arbiter_id = ?";
+
+  /* 
+   * CHANGE: Updated find_partial_decryption query
+   * - Changed to select arbiter_id and value columns
+   * - Simplified to match new schema with serialized objects
+   */
 
   // Prepare statement.
   sqlite3_stmt *stmt;
@@ -487,6 +530,12 @@ PartialDecryptionRow DBDriver::find_partial_decryption(std::string arbiter_id) {
         //     std::string((const char *)raw_result, num_bytes);
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
         partial_decryption.deserialize(data);
+        /* 
+         * CHANGE: Updated partial_decryption deserialization
+         * - Now deserializes complete object instead of setting field directly
+         * - Converts string to byte vector and uses deserialize method
+         * - Replaces direct assignment of arbiter_id field
+         */
         break;
       }
     }
@@ -508,7 +557,6 @@ PartialDecryptionRow
 DBDriver::insert_partial_decryption(PartialDecryptionRow partial_decryption) {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
-  // std::cout << "[Debug] insert_partial_decryption" << std::endl;
 
   std::string insert_query =
       "INSERT OR REPLACE INTO partial_decryption(arbiter_id, value) VALUES(?, ?);";
@@ -517,6 +565,12 @@ DBDriver::insert_partial_decryption(PartialDecryptionRow partial_decryption) {
   std::vector<unsigned char> partial_decryption_data;
   partial_decryption.serialize(partial_decryption_data);
   std::string partial_decryption_str = chvec2str(partial_decryption_data);
+
+  /* 
+   * CHANGE: Updated partial_decryption serialization
+   * - Now serializes complete object to byte vector then string
+   * - Replaces serializing individual fields separately
+   */
 
 
   // std::vector<unsigned char> zkp_data;
@@ -534,6 +588,13 @@ DBDriver::insert_partial_decryption(PartialDecryptionRow partial_decryption) {
   // sqlite3_bind_blob(stmt, 3, partial_decryption_str.c_str(),
   //                   partial_decryption_str.length(), SQLITE_STATIC);
   // sqlite3_bind_blob(stmt, 4, zkp_str.c_str(), zkp_str.length(), SQLITE_STATIC);
+
+  /* 
+   * CHANGE: Updated parameter binding
+   * - Now binds serialized data to both arbiter_id and value columns
+   * - Simplified from binding multiple fields to binding just serialized object twice
+   * - Removed binding for unnecessary fields
+   */
 
   // Run and return.
   sqlite3_step(stmt);
