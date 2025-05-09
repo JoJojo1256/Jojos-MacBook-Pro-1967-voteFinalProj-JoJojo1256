@@ -158,7 +158,7 @@ void ArbiterClient::HandleAdjudicate(std::string _) {
     a2w_msg.arbiter_vk_path = this->arbiter_config.arbiter_public_key_path;
     a2w_msg.dec = partial_dec;
     a2w_msg.zkp = zkp_dec;
-    a2w_msg.id = i;
+    a2w_msg.candidate_id = i;
     this->db_driver->insert_partial_decryption(a2w_msg);
   }
 

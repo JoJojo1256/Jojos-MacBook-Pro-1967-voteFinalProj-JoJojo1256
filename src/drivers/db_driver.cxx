@@ -31,13 +31,16 @@ int DBDriver::close() { return sqlite3_close(this->db); }
  * Initialize tables.
  */
 void DBDriver::init_tables() {
+  // print "start init tatbles"
+  std::cout << "start init tables" << std::endl;
+
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
   // create voter table
   std::string create_voter_query = "CREATE TABLE IF NOT EXISTS voter("
                                    "id TEXT PRIMARY KEY NOT NULL, "
-                                   "registrar_signature TEXT NOT NULL);";
+                                   "value TEXT NOT NULL);";
   char *err;
   int exit = sqlite3_exec(this->db, create_voter_query.c_str(), NULL, 0, &err);
   if (exit != SQLITE_OK) {
@@ -49,9 +52,7 @@ void DBDriver::init_tables() {
   // create vote table
   std::string create_vote_query = "CREATE TABLE IF NOT EXISTS vote("
                                   "vote TEXT PRIMARY KEY  NOT NULL, "
-                                  "zkp TEXT NOT NULL, "
-                                  "unblinded_signature TEXT NOT NULL,"
-                                  "tallyer_signature TEXT NOT NULL);";
+                                  "value TEXT NOT NULL);";
   exit = sqlite3_exec(this->db, create_vote_query.c_str(), NULL, 0, &err);
   if (exit != SQLITE_OK) {
     std::cerr << "Error creating table: " << err << std::endl;
@@ -63,9 +64,7 @@ void DBDriver::init_tables() {
   std::string create_partial_decryption_query =
       "CREATE TABLE IF NOT EXISTS partial_decryption("
       "arbiter_id TEXT PRIMARY KEY NOT NULL, "
-      "arbiter_vk_path TEXT NOT NULL, "
-      "partial_decryption TEXT NOT NULL, "
-      "zkp TEXT NOT NULL);";
+      "value TEXT NOT NULL);";
   exit = sqlite3_exec(this->db, create_partial_decryption_query.c_str(), NULL,
                       0, &err);
   if (exit != SQLITE_OK) {
@@ -119,8 +118,11 @@ VoterRow DBDriver::find_voter(std::string id) {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  std::string find_query = "SELECT id, registrar_signature "
-                           "FROM voter WHERE id = ?";
+  // std::string find_query = "SELECT id, registrar_signature "
+  //                          "FROM voter WHERE id = ?";
+
+  std::string find_query = "SELECT id, value "
+                           "FROM voter WHERE id = ?"; 
 
   // Prepare statement.
   sqlite3_stmt *stmt;
@@ -141,8 +143,11 @@ VoterRow DBDriver::find_voter(std::string id) {
         ;
         break;
       case 1:
-        voter.registrar_signature =
-            string_to_integer(std::string((const char *)raw_result, num_bytes));
+        // voter.registrar_signature =
+        //     string_to_integer(std::string((const char *)raw_result, num_bytes));
+        std::string data = std::string((const char *)raw_result, num_bytes);
+        std::vector<unsigned char> data_vec = str2chvec(data);
+        voter.deserialize(data_vec);
         break;
       }
     }
@@ -163,12 +168,17 @@ VoterRow DBDriver::insert_voter(VoterRow voter) {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  std::string insert_query = "INSERT INTO voter(id, registrar_signature) "
+  std::string insert_query = "INSERT INTO voter(id, value) "
                              "VALUES(?, ?);";
 
-  // Serialize voter fields.
-  std::string registrar_signature_str =
-      integer_to_string(voter.registrar_signature);
+  // // Serialize voter fields.
+  // std::string registrar_signature_str =
+  //     integer_to_string(voter.registrar_signature);
+
+  // use deserialize function to convert to string for voter.voter
+  std::vector<unsigned char> voter_data;
+  voter.serialize(voter_data);
+  std::string voter_data_str = chvec2str(voter_data);
 
   // Prepare statement.
   sqlite3_stmt *stmt;
@@ -176,8 +186,11 @@ VoterRow DBDriver::insert_voter(VoterRow voter) {
                      &stmt, nullptr);
   sqlite3_bind_blob(stmt, 1, voter.id.c_str(), voter.id.length(),
                     SQLITE_STATIC);
-  sqlite3_bind_blob(stmt, 2, registrar_signature_str.c_str(),
-                    registrar_signature_str.length(), SQLITE_STATIC);
+  // sqlite3_bind_blob(stmt, 2, registrar_signature_str.c_str(),
+  //                   registrar_signature_str.length(), SQLITE_STATIC);
+
+  sqlite3_bind_blob(stmt, 2, voter_data_str.c_str(), voter_data_str.length(),
+                  SQLITE_STATIC);
 
   // Run and return.
   sqlite3_step(stmt);
@@ -202,8 +215,11 @@ std::vector<VoteRow> DBDriver::all_votes() {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
+  // std::string find_query =
+  //     "SELECT vote, zkp, unblinded_signature, tallyer_signature FROM vote";
+
   std::string find_query =
-      "SELECT vote, zkp, unblinded_signature, tallyer_signature FROM vote";
+    "SELECT vote, value FROM vote";
 
   // Prepare statement.
   sqlite3_stmt *stmt;
@@ -221,19 +237,7 @@ std::vector<VoteRow> DBDriver::all_votes() {
       switch (colIndex) {
       case 0:
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
-        vote.vote.deserialize(data);
-        break;
-      case 1:
-        data = str2chvec(std::string((const char *)raw_result, num_bytes));
-        vote.zkp.deserialize(data);
-        break;
-      case 2:
-        vote.unblinded_signature =
-            CryptoPP::Integer(std::string((const char *)raw_result).c_str());
-        break;
-      case 3:
-        vote.tallyer_signature =
-            std::string((const char *)raw_result, num_bytes);
+        vote.deserialize(data);
         break;
       }
     }
@@ -255,8 +259,10 @@ VoteRow DBDriver::find_vote(Vote_Ciphertext vote_s) {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  std::string find_query = "SELECT vote, zkp, unblinded_signature, "
-                           "tallyer_signature FROM vote WHERE vote = ?";
+  // std::string find_query = "SELECT vote, zkp, unblinded_signature, "
+  //                          "tallyer_signature FROM vote WHERE vote = ?";
+
+  std::string find_query = "SELECT vote, value FROM vote WHERE vote = ?";
 
   // Serialize vote struct.
   std::vector<unsigned char> vote_data;
@@ -284,7 +290,8 @@ VoteRow DBDriver::find_vote(Vote_Ciphertext vote_s) {
         break;
       case 1:
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
-        vote.zkp.deserialize(data);
+        // vote.zkp.deserialize(data);
+        vote.deserialize(data);
         break;
       case 2:
         vote.unblinded_signature =
@@ -310,23 +317,28 @@ VoteRow DBDriver::find_vote(Vote_Ciphertext vote_s) {
  * Insert the given vote; prints an error if violated a primary key constraint.
  */
 VoteRow DBDriver::insert_vote(VoteRow vote) {
+  // print debugging message here
+  // std::cout << "[Debug] inserting vote" << std::endl;
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  std::string insert_query = "INSERT INTO vote(vote, zkp, unblinded_signature, "
-                             "tallyer_signature) VALUES(?, ?, ?, ?);";
+  // std::string insert_query = "INSERT INTO vote(vote, zkp, unblinded_signature, "
+  //                            "tallyer_signature) VALUES(?, ?, ?, ?);";
+
+
+  std::string insert_query = "INSERT INTO vote(vote,value) VALUES(?, ?);";
 
   // Serialize vote fields.
   std::vector<unsigned char> vote_data;
-  vote.vote.serialize(vote_data);
+  vote.serialize(vote_data);
   std::string vote_str = chvec2str(vote_data);
 
-  std::vector<unsigned char> zkp_data;
-  vote.zkp.serialize(zkp_data);
-  std::string zkp_str = chvec2str(zkp_data);
+  // std::vector<unsigned char> zkp_data;
+  // vote.zkp.serialize(zkp_data);
+  // std::string zkp_str = chvec2str(zkp_data);
 
-  std::string unblinded_signature_str =
-      CryptoPP::IntToString(vote.unblinded_signature);
+  // std::string unblinded_signature_str =
+  //     CryptoPP::IntToString(vote.unblinded_signature);
 
   std::string tallyer_signature_str = vote.tallyer_signature;
 
@@ -336,11 +348,13 @@ VoteRow DBDriver::insert_vote(VoteRow vote) {
                      &stmt, nullptr);
   sqlite3_bind_blob(stmt, 1, vote_str.c_str(), vote_str.length(),
                     SQLITE_STATIC);
-  sqlite3_bind_blob(stmt, 2, zkp_str.c_str(), zkp_str.length(), SQLITE_STATIC);
-  sqlite3_bind_blob(stmt, 3, unblinded_signature_str.c_str(),
-                    unblinded_signature_str.length(), SQLITE_STATIC);
-  sqlite3_bind_blob(stmt, 4, tallyer_signature_str.c_str(),
-                    tallyer_signature_str.length(), SQLITE_STATIC);
+  sqlite3_bind_blob(stmt, 2, vote_str.c_str(), vote_str.length(),
+                    SQLITE_STATIC);
+  // sqlite3_bind_blob(stmt, 2, zkp_str.c_str(), zkp_str.length(), SQLITE_STATIC);
+  // sqlite3_bind_blob(stmt, 3, unblinded_signature_str.c_str(),
+  //                   unblinded_signature_str.length(), SQLITE_STATIC);
+  // sqlite3_bind_blob(stmt, 4, tallyer_signature_str.c_str(),
+  //                   tallyer_signature_str.length(), SQLITE_STATIC);
 
   // Run and return.
   sqlite3_step(stmt);
@@ -403,13 +417,14 @@ DBDriver::DBDriver::all_partial_decryptions() {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  std::string find_query = "SELECT arbiter_id, arbiter_vk_path, "
-                           "partial_decryption, zkp FROM partial_decryption";
+  std::string find_query = "SELECT arbiter_id, value FROM partial_decryption";
 
   // Prepare statement.
   sqlite3_stmt *stmt;
   sqlite3_prepare_v2(this->db, find_query.c_str(), find_query.length(), &stmt,
                      nullptr);
+  // std::cout << "[Debug] preparing all_partial_decryptions db statement" << std::endl;
+  
 
   // Retreive partial_decryption.
   std::vector<PartialDecryptionRow> res;
@@ -421,26 +436,15 @@ DBDriver::DBDriver::all_partial_decryptions() {
       std::vector<unsigned char> data;
       switch (colIndex) {
       case 0:
-        partial_decryption.arbiter_id =
-            std::string((const char *)raw_result, num_bytes);
-        break;
-      case 1:
-        partial_decryption.arbiter_vk_path =
-            std::string((const char *)raw_result, num_bytes);
-        break;
-      case 2:
+        // std::cout << "[Debug] deserializing each partial decrypt" << std::endl;
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
-        partial_decryption.dec.deserialize(data);
-        break;
-      case 3:
-        data = str2chvec(std::string((const char *)raw_result, num_bytes));
-        partial_decryption.zkp.deserialize(data);
+        partial_decryption.deserialize(data);
         break;
       }
     }
     res.push_back(partial_decryption);
   }
-
+  // std::cout << "[Debug] size of all_partial_decryptions res -> " << res.size() << std::endl;
   // Finalize and return.
   int exit = sqlite3_finalize(stmt);
   if (exit != SQLITE_OK) {
@@ -458,7 +462,7 @@ PartialDecryptionRow DBDriver::find_partial_decryption(std::string arbiter_id) {
   std::unique_lock<std::mutex> lck(this->mtx);
 
   std::string find_query =
-      "SELECT arbiter_id, arbiter_vk_path, partial_decryption, zkp FROM "
+      "SELECT arbiter_id, value FROM "
       "partial_decryption WHERE arbiter_id = ?";
 
   // Prepare statement.
@@ -477,20 +481,10 @@ PartialDecryptionRow DBDriver::find_partial_decryption(std::string arbiter_id) {
       std::vector<unsigned char> data;
       switch (colIndex) {
       case 0:
-        partial_decryption.arbiter_id =
-            std::string((const char *)raw_result, num_bytes);
-        break;
-      case 1:
-        partial_decryption.arbiter_vk_path =
-            std::string((const char *)raw_result, num_bytes);
-        break;
-      case 2:
+        // partial_decryption.arbiter_id =
+        //     std::string((const char *)raw_result, num_bytes);
         data = str2chvec(std::string((const char *)raw_result, num_bytes));
-        partial_decryption.dec.deserialize(data);
-        break;
-      case 3:
-        data = str2chvec(std::string((const char *)raw_result, num_bytes));
-        partial_decryption.zkp.deserialize(data);
+        partial_decryption.deserialize(data);
         break;
       }
     }
@@ -512,31 +506,32 @@ PartialDecryptionRow
 DBDriver::insert_partial_decryption(PartialDecryptionRow partial_decryption) {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
+  // std::cout << "[Debug] insert_partial_decryption" << std::endl;
 
   std::string insert_query =
-      "INSERT OR REPLACE INTO partial_decryption(arbiter_id, "
-      "arbiter_vk_path, partial_decryption, zkp) VALUES(?, ?, ?, ?);";
+      "INSERT OR REPLACE INTO partial_decryption(arbiter_id, value) VALUES(?, ?);";
 
   // Serialize pd fields.
   std::vector<unsigned char> partial_decryption_data;
-  partial_decryption.dec.serialize(partial_decryption_data);
+  partial_decryption.serialize(partial_decryption_data);
   std::string partial_decryption_str = chvec2str(partial_decryption_data);
 
-  std::vector<unsigned char> zkp_data;
-  partial_decryption.zkp.serialize(zkp_data);
-  std::string zkp_str = chvec2str(zkp_data);
+
+  // std::vector<unsigned char> zkp_data;
+  // partial_decryption.zkp.serialize(zkp_data);
+  // std::string zkp_str = chvec2str(zkp_data);
 
   // Prepare statement.
   sqlite3_stmt *stmt;
   sqlite3_prepare_v2(this->db, insert_query.c_str(), insert_query.length(),
                      &stmt, nullptr);
-  sqlite3_bind_blob(stmt, 1, partial_decryption.arbiter_id.c_str(),
-                    partial_decryption.arbiter_id.length(), SQLITE_STATIC);
-  sqlite3_bind_blob(stmt, 2, partial_decryption.arbiter_vk_path.c_str(),
-                    partial_decryption.arbiter_vk_path.length(), SQLITE_STATIC);
-  sqlite3_bind_blob(stmt, 3, partial_decryption_str.c_str(),
+  sqlite3_bind_blob(stmt, 1, partial_decryption_str.c_str(),
                     partial_decryption_str.length(), SQLITE_STATIC);
-  sqlite3_bind_blob(stmt, 4, zkp_str.c_str(), zkp_str.length(), SQLITE_STATIC);
+  sqlite3_bind_blob(stmt, 2, partial_decryption_str.c_str(),
+                    partial_decryption_str.length(), SQLITE_STATIC);
+  // sqlite3_bind_blob(stmt, 3, partial_decryption_str.c_str(),
+  //                   partial_decryption_str.length(), SQLITE_STATIC);
+  // sqlite3_bind_blob(stmt, 4, zkp_str.c_str(), zkp_str.length(), SQLITE_STATIC);
 
   // Run and return.
   sqlite3_step(stmt);
@@ -544,5 +539,6 @@ DBDriver::insert_partial_decryption(PartialDecryptionRow partial_decryption) {
   if (exit != SQLITE_OK) {
     std::cerr << "Error inserting partial_decryption " << std::endl;
   }
+
   return partial_decryption;
 }

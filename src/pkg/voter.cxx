@@ -158,8 +158,8 @@ VoterClient::HandleKeyExchange(CryptoPP::RSA::PublicKey verification_key) {
 void VoterClient::HandleRegister(std::string input) {
   // Parse input and connect to registrar
   std::vector<std::string> args = string_split(input, ' ');
-  if (args.size() != 4) {
-    this->cli_driver->print_warning("usage: register <address> <port> <vote>");
+  if (args.size() < 4) {
+    this->cli_driver->print_warning("usage: register <address> <port> <n> <vote_0> ... <vote_n>");
     return;
   }
   this->network_driver->connect(args[1], std::stoi(args[2]));
@@ -369,12 +369,7 @@ void VoterClient::HandleVerify(std::string input) {
     throw std::runtime_error("Election failed!");
   }
 
-  // Print results
   this->cli_driver->print_success("Election succeeded!");
-  // this->cli_driver->print_success("Number of votes for 0: " +
-  //                                 CryptoPP::IntToString(std::get<0>(result)));
-  // this->cli_driver->print_success("Number of votes for 1: " +
-  //                                 CryptoPP::IntToString(std::get<1>(result)));
 
   std::vector<CryptoPP::Integer> num_votes = std::get<0>(result);
   this->cli_driver->print_success("Number of votes for " + std::to_string(num_votes.size()));
@@ -393,58 +388,55 @@ void VoterClient::HandleVerify(std::string input) {
  */
 std::pair<std::vector<CryptoPP::Integer>, bool> VoterClient::DoVerify() {
   // TODO: implement me!
-    // Load election public key
+  // Load election public key
 
-    // Load all votes
-    CUSTOM_LOG(lg, debug) << "Verifying election results...";
+  // Load all votes
+  CUSTOM_LOG(lg, debug) << "Verifying election results...";
 
-    std::vector<VoteRow> all_votes = this->db_driver->all_votes();
-    std::vector<VoteRow> valid_votes;
-    std::map<size_t, std::vector<VoteRow>> vote_map;
-    bool valid;
-    // std::cout << "[Debug] Number of all votes in verify -> " << all_votes.size() << std::endl; 
-    for (size_t i = 0; i < all_votes.size(); ++i) {
-      valid = true;
-      for (size_t j = 0; j < all_votes[i].votes.size(); ++j) {
-        Vote_Ciphertext vote = all_votes[i].votes[j];
-        VoteZKP_Struct zkp = all_votes[i].zkps[j];
-        bool valid_signature = this->crypto_driver->RSA_verify(
-          this->RSA_tallyer_verification_key,
-          concat_vote_zkp_and_signature(vote, zkp, all_votes[i].unblinded_signatures[j]),
-          all_votes[i].tallyer_signatures[j]
-        );
-        bool valid_vote = ElectionClient::VerifyVoteZKP(std::make_pair(vote, zkp), this->EG_arbiter_public_key);
-        if (!valid_signature || !valid_vote) {
-          valid = false;
-          break;
-        }
-      }
-      if (valid) {
-        valid_votes.push_back(all_votes[i]);
-        // std::cout << "[Debug] valid_votes.push_back(all_votes[i]) i -> " << i << std::endl; 
-        for (size_t j = 0; j < all_votes[i].votes.size(); ++j){
-          if (vote_map.find(j) == vote_map.end()){
-            // std::cout << "[Debug] create new vector - vote_map[j] = std::vector<VoteRow>(); j -> " << j << std::endl; 
-            vote_map[j] = std::vector<VoteRow>();
-          }
-          VoteRow vote_row;
-          vote_row.vote = all_votes[i].votes[j];
-          vote_row.zkp = all_votes[i].zkps[j];
-          vote_map[j].push_back(vote_row);
-        }
+  std::vector<VoteRow> all_votes = this->db_driver->all_votes();
+  std::vector<VoteRow> valid_votes;
+  std::map<size_t, std::vector<VoteRow>> vote_map;
+  bool valid;
+
+  for (size_t i = 0; i < all_votes.size(); ++i) {
+    valid = true;
+    for (size_t j = 0; j < all_votes[i].votes.size(); ++j) {
+      Vote_Ciphertext vote = all_votes[i].votes[j];
+      VoteZKP_Struct zkp = all_votes[i].zkps[j];
+      bool valid_signature = this->crypto_driver->RSA_verify(
+        this->RSA_tallyer_verification_key,
+        concat_vote_zkp_and_signature(vote, zkp, all_votes[i].unblinded_signatures[j]),
+        all_votes[i].tallyer_signatures[j]
+      );
+      bool valid_vote = ElectionClient::VerifyVoteZKP(std::make_pair(vote, zkp), this->EG_arbiter_public_key);
+      if (!valid_signature || !valid_vote) {
+        valid = false;
+        break;
       }
     }
-
-    std::vector<PartialDecryptionRow> all_partial_dec = this->db_driver->all_partial_decryptions();
-
-    std::map<size_t, std::vector<PartialDecryptionRow>> partial_dec_map;
-    for (size_t i = 0; i < all_partial_dec.size(); ++i){
-      // std::cout << "[Debug] all_partial_dec[i].candidate_id -> " << all_partial_dec[i].candidate_id << std::endl;
-      if (partial_dec_map.find(all_partial_dec[i].id) == partial_dec_map.end()){
-        partial_dec_map[all_partial_dec[i].id] = std::vector<PartialDecryptionRow>();
+    if (valid) {
+      valid_votes.push_back(all_votes[i]);
+      for (size_t j = 0; j < all_votes[i].votes.size(); ++j){
+        if (vote_map.find(j) == vote_map.end()){ 
+          vote_map[j] = std::vector<VoteRow>();
+        }
+        VoteRow vote_row;
+        vote_row.vote = all_votes[i].votes[j];
+        vote_row.zkp = all_votes[i].zkps[j];
+        vote_map[j].push_back(vote_row);
       }
-      partial_dec_map[all_partial_dec[i].id].push_back(all_partial_dec[i]);
     }
+  }
+
+  std::vector<PartialDecryptionRow> all_partial_dec = this->db_driver->all_partial_decryptions();
+
+  std::map<size_t, std::vector<PartialDecryptionRow>> partial_dec_map;
+  for (size_t i = 0; i < all_partial_dec.size(); ++i){
+    if (partial_dec_map.find(all_partial_dec[i].candidate_id) == partial_dec_map.end()){
+      partial_dec_map[all_partial_dec[i].candidate_id] = std::vector<PartialDecryptionRow>();
+    }
+    partial_dec_map[all_partial_dec[i].candidate_id].push_back(all_partial_dec[i]);
+  }
 
   CryptoPP::Integer pki;
   for (auto it = partial_dec_map.begin(); it != partial_dec_map.end(); ++it){

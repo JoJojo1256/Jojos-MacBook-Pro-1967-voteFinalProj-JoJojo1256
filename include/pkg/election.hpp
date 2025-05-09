@@ -36,7 +36,7 @@ public:
                  std::vector<PartialDecryptionRow> all_partial_decryptions);
 
   static Vector_Vote_ZKP GenerateVectorVotesZKP(
-                 std::vector<Vote_Ciphertext> votes,
+                 std::vector<Vote_Ciphertext>,
                  CryptoPP::Integer pk, CryptoPP::Integer R);
             
   static bool VerifyVectorVotesZKP(Vector_Vote_ZKP zkp, CryptoPP::Integer pk, int k);

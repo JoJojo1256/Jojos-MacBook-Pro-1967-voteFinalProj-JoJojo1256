@@ -55,3 +55,5 @@ snipped/
 # disk
 disk/*
 !disk/README.md
+
+**/.DS_Store

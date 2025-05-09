@@ -160,21 +160,19 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
     CryptoPP::SecByteBlock HMAC_key = keys.second;
 
     VoterToTallyer_Vote_Message vote_msg;
+    std::vector<unsigned char> raw_data, decrypted_data;
     bool valid;
-
-    std::vector<unsigned char> encrypted_data = network_driver->read();
-    auto decrypted_data = crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
-    if (!decrypted_data.second) {
-      // this->cli_driver->print_error("MAC verification failed.");
-      network_driver->disconnect();
-      return;
+    raw_data = network_driver->read();
+    std::tie(decrypted_data, valid) = crypto_driver->decrypt_and_verify(AES_key, HMAC_key, raw_data);
+    if (!valid){
+      throw std::runtime_error("CryptoDriver decrypt_and_verify failed [TallyerClient::HandleTally].");
     }
-    VoterToTallyer_Vote_Message vote;
-    vote.deserialize(decrypted_data.first);
+
+    vote_msg.deserialize(decrypted_data);
 
     VoteRow db_vote;
 
-    for (int i = 0; i < vote_msg.votes.size(); ++i) {
+    for (int i = 0; i < vote_msg.votes.size(); i++) {
       valid = crypto_driver->RSA_BLIND_verify(
         this->RSA_registrar_verification_key,
         vote_msg.votes[i],
@@ -187,7 +185,6 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
         throw std::runtime_error("Verify zkp failed [RegistrarClient::HandleRegister].");
       }
     }
-
     // 3) check exact k vote zkp
     valid = ElectionClient::VerifyVectorVotesZKP(vote_msg.vector_vote_zkp, this->EG_arbiter_public_key, vote_msg.votes.size() / 2);
     if (!valid){
@@ -195,7 +192,7 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
       throw std::runtime_error("Verify exact k zkp failed.");
     }
 
-    cli_driver->print_success("exact k zkp verified.");
+    cli_driver->print_success("vector zkp verified.");
     // 4) signs all signatures and publishes it to the database if it is valid
     std::vector<std::string> signatures;
     for (int i = 0; i < vote_msg.votes.size(); i++) {

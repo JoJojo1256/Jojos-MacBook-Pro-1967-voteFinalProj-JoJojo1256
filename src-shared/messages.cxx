@@ -693,7 +693,7 @@ void ArbiterToWorld_PartialDecryption_Message::serialize(
   // serialize id
   int index = data.size();
   data.resize(index + sizeof(size_t));
-  std::memcpy(&data[index], &this->id, sizeof(size_t));
+  std::memcpy(&data[index], &this->candidate_id, sizeof(size_t));
 
 }
 
@@ -720,7 +720,7 @@ int ArbiterToWorld_PartialDecryption_Message::deserialize(
   n += this->zkp.deserialize(zkp_slice);
 
   // deserialize id
-  std::memcpy(&this->id, &data[n], sizeof(size_t));
+  std::memcpy(&this->candidate_id, &data[n], sizeof(size_t));
   n += sizeof(size_t);
   return n;
 }
