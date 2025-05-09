@@ -48,8 +48,13 @@ void DBDriver::init_tables() {
   } else {
     std::cout << "Table created successfully" << std::endl;
   }
+ 
+  /* 
+  * CHANGE: Modified voter table schema
+  * - Replaced specific columns for individual fields with a single 'value' column
+  * - This change allows storing serialized voter objects instead of individual fields
+  */
 
-  // create vote table
   std::string create_vote_query = "CREATE TABLE IF NOT EXISTS vote("
                                   "vote TEXT PRIMARY KEY  NOT NULL, "
                                   "value TEXT NOT NULL);";
@@ -118,11 +123,8 @@ VoterRow DBDriver::find_voter(std::string id) {
   // Lock db driver.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  // std::string find_query = "SELECT id, registrar_signature "
-  //                          "FROM voter WHERE id = ?";
-
-  std::string find_query = "SELECT id, value "
-                           "FROM voter WHERE id = ?"; 
+  std::string find_query = "SELECT id, val"
+                           "FROM voter WHERE id = ?";
 
   // Prepare statement.
   sqlite3_stmt *stmt;

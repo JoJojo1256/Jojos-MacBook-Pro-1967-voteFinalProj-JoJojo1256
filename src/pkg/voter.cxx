@@ -170,7 +170,7 @@ void VoterClient::HandleRegister(std::string input) {
 
   CryptoPP::Integer num_votes = CryptoPP::Integer(std::stoi(args[3]));
   if (args.size() != 4 + num_votes){
-    this->cli_driver->print_warning("usage: wrong number of votes ");
+    this->cli_driver->print_warning("wrong number of votes ");
     return;
   }
   std::vector<CryptoPP::Integer> raw_votes;

@@ -185,7 +185,7 @@ void TallyerClient::HandleTally(std::shared_ptr<NetworkDriver> network_driver,
         throw std::runtime_error("Verify zkp failed [RegistrarClient::HandleRegister].");
       }
     }
-    // 3) check exact k vote zkp
+    // 3) check vector vote zkp
     valid = ElectionClient::VerifyVectorVotesZKP(vote_msg.vector_vote_zkp, this->EG_arbiter_public_key, vote_msg.votes.size() / 2);
     if (!valid){
       cli_driver->print_warning("Verify exact k zkp failed.");

@@ -253,14 +253,18 @@ bool ElectionClient::VerifyVectorVotesZKP(
   Vector_Vote_ZKP zkp, CryptoPP::Integer pk, int k) {
   initLogger();
 
+  // turn transcript into a challenge
   CryptoPP::Integer sigma = hash_vector_vote_zkp(pk, zkp.c1, zkp.c2, zkp.a, zkp.b);
 
+  // ensures the prover knows an exponent r s.t. c1 = g^r and that the proof
+  // was built honestly using sigma
   if (CryptoPP::ModularExponentiation(DL_G, zkp.r, DL_P) != a_times_b_mod_c(zkp.a, CryptoPP::ModularExponentiation(zkp.c1, sigma, DL_P), DL_P)) {
     return false;
   }
 
   CryptoPP::Integer pk_r = CryptoPP::ModularExponentiation(pk, zkp.r, DL_P);
 
+  // divide by gk
   CryptoPP::Integer g_k = CryptoPP::ModularExponentiation(DL_G, k, DL_P);
   CryptoPP::Integer g_k_inv = CryptoPP::EuclideanMultiplicativeInverse(g_k, DL_P);
   CryptoPP::Integer C2_div_g_k = a_times_b_mod_c(zkp.c2, g_k_inv, DL_P);
