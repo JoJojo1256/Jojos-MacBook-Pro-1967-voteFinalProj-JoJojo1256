@@ -146,54 +146,76 @@ RegistrarClient::HandleKeyExchange(
  * 3) Blindly signs the user's message and sends it to the user.
  * 4) Adds the user to the database and disconnects.
  * Disconnect and throw an error if any MACs are invalid.
- */
-void RegistrarClient::HandleRegister(
+ */void RegistrarClient::HandleRegister(
     std::shared_ptr<NetworkDriver> network_driver,
     std::shared_ptr<CryptoDriver> crypto_driver) {
   // TODO: implement me!
   // --------------------------------
   // Exit cleanly
-  // Generate AES and HMAC keys
-    auto keys = HandleKeyExchange(network_driver, crypto_driver);
-    CryptoPP::SecByteBlock AES_key = keys.first;
-    CryptoPP::SecByteBlock HMAC_key = keys.second;
-    std::vector<unsigned char> encrypted_data = network_driver->read();
-    auto decrypted_data =
-        crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
-    if (!decrypted_data.second) {
-      //this->cli_driver->print_error("MAC verification failed.");
-      return;
-    }
-    VoterToRegistrar_Register_Message user_data;
-    user_data.deserialize(decrypted_data.first);
 
-    VoterRow voter = this->db_driver->find_voter(user_data.id);
-    CryptoPP::Integer signature;
-    if (voter.id == user_data.id) {
-      RegistrarToVoter_Blind_Signature_Message msg;
-      msg.id = voter.id;
-      msg.registrar_signature = voter.registrar_signature;
-      std::vector<unsigned char> data_to_send;
-      data_to_send = crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &msg);
-      network_driver->send(data_to_send);
-    } else{
-      //3) Blindly signs the vector of user's message and sends the vector of signautres to the user.
-      RegistrarToVoter_Blind_Signature_Message msg;
-      std::vector<CryptoPP::Integer> signatures;
-      for (auto vote : user_data.votes){
-        CryptoPP::Integer signature = crypto_driver->RSA_BLIND_sign(this->RSA_registrar_signing_key, vote);
-        signatures.push_back(signature);
-      }
-      msg.registrar_signatures = signatures;
-      std::vector<unsigned char> data_to_send;
-      data_to_send = crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &msg);
-      network_driver->send(data_to_send);
+  // Step 1: Perform key exchange to establish AES and HMAC keys for symmetric encryption
+  auto keys = HandleKeyExchange(network_driver, crypto_driver);
+  CryptoPP::SecByteBlock AES_key = keys.first;
+  CryptoPP::SecByteBlock HMAC_key = keys.second;
 
-      //4) Adds the user to the database and disconects
-      voter.id = user_data.id;
-      voter.registrar_signatures = signatures;
-      this->db_driver->insert_voter(voter);
+  // Step 2: Receive encrypted registration message from voter
+  std::vector<unsigned char> encrypted_data = network_driver->read();
+
+  // Step 3: Decrypt and verify the message using AES and HMAC
+  auto decrypted_data =
+      crypto_driver->decrypt_and_verify(AES_key, HMAC_key, encrypted_data);
+
+  if (!decrypted_data.second) {
+    // Authentication failed — reject message
+    // this->cli_driver->print_error("MAC verification failed.");
+    return;
+  }
+
+  // Step 4: Deserialize the voter's registration message
+  VoterToRegistrar_Register_Message user_data;
+  user_data.deserialize(decrypted_data.first);
+
+  // Step 5: Check if the voter is already in the database
+  VoterRow voter = this->db_driver->find_voter(user_data.id);
+  CryptoPP::Integer signature;
+
+  if (voter.id == user_data.id) {
+    // Voter already exists — send their existing blind signature
+    RegistrarToVoter_Blind_Signature_Message msg;
+    msg.id = voter.id;
+    msg.registrar_signature = voter.registrar_signature;
+
+    // Encrypt and send the old signature response
+    std::vector<unsigned char> data_to_send;
+    data_to_send = crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &msg);
+    network_driver->send(data_to_send);
+  } else {
+    // Step 6: Voter is new — sign each blinded vote in the vector
+
+    // Create message to return multiple signatures
+    RegistrarToVoter_Blind_Signature_Message msg;
+    std::vector<CryptoPP::Integer> signatures;
+
+    // Sign each encrypted, blinded vote using RSA blind signing
+    for (auto vote : user_data.votes) {
+      CryptoPP::Integer signature = crypto_driver->RSA_BLIND_sign(this->RSA_registrar_signing_key, vote);
+      signatures.push_back(signature);
     }
-      
+
+    // Store all signatures in the message
+    msg.registrar_signatures = signatures;
+
+    // Step 7: Encrypt and send the message containing all signatures back to the voter
+    std::vector<unsigned char> data_to_send;
+    data_to_send = crypto_driver->encrypt_and_tag(AES_key, HMAC_key, &msg);
+    network_driver->send(data_to_send);
+
+    // Step 8: Register the voter in the database with their ID and blind signatures
+    voter.id = user_data.id;
+    voter.registrar_signatures = signatures;
+    this->db_driver->insert_voter(voter);
+  }
+
+  // Step 9: Cleanly disconnect from the voter
   network_driver->disconnect();
 }
